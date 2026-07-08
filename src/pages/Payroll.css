@@ -1,0 +1,710 @@
+.payroll-page {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* Pay Slip Action buttons */
+.action-buttons-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+}
+
+.btn-action.edit {
+  background-color: var(--primary-light);
+  color: var(--primary);
+}
+
+.btn-action.edit:hover {
+  background-color: var(--primary);
+  color: var(--text-inverse);
+}
+
+.btn-action.slip {
+  background-color: var(--surface-hover);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+}
+
+.btn-action.slip:hover {
+  background-color: var(--accent);
+}
+
+.pay-period {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.ot-pay-detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.ot-pay-detail small {
+  font-size: 0.7rem;
+}
+
+/* Modal Backdrops & Overlays */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 500px;
+  background-color: var(--background);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  position: relative;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 1rem;
+}
+
+.modal-header h3 {
+  font-size: 1.25rem;
+  color: var(--secondary);
+}
+
+.close-btn {
+  color: var(--text-muted);
+  transition: var(--transition);
+}
+
+.close-btn:hover {
+  color: var(--danger);
+}
+
+/* Manual Entry Forms */
+.override-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.employee-profile-preview {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background-color: var(--surface);
+  padding: 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+}
+
+.preview-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--text-inverse);
+}
+
+.preview-info h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--secondary);
+}
+
+.preview-info p {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.form-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.form-group input {
+  padding: 0.625rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  outline: none;
+  font-size: 0.95rem;
+  transition: var(--transition);
+}
+
+.form-group input:focus {
+  border-color: var(--primary);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.btn-cancel {
+  padding: 0.625rem 1.25rem;
+  background-color: var(--surface-hover);
+  color: var(--text-main);
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.btn-cancel:hover {
+  background-color: var(--accent);
+}
+
+.btn-save {
+  padding: 0.625rem 1.25rem;
+  background-color: var(--primary);
+  color: var(--text-inverse);
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.btn-save:hover {
+  background-color: var(--primary-hover);
+}
+
+/* Pay Slip Modal Sheet */
+.payslip-modal {
+  max-width: 700px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.print-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--success);
+  color: var(--text-inverse);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: var(--transition);
+}
+
+.print-btn:hover {
+  background-color: #047857;
+}
+
+/* Payslip Invoice layout styling */
+.payslip-invoice-sheet {
+  background-color: #ffffff;
+  color: #1f2937;
+  padding: 2rem;
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-lg);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.invoice-branding {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #191258;
+  padding-bottom: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.invoice-logo-container {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.payslip-logo-img {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+}
+
+.branding-meta h2 {
+  color: #191258;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.branding-meta p {
+  font-size: 0.8rem;
+  color: #4b5563;
+  margin-top: 0.125rem;
+}
+
+.branding-meta span {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.branding-slip-details {
+  text-align: right;
+}
+
+.branding-slip-details h3 {
+  color: #191258;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.branding-slip-details span {
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.payslip-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.grid-col {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dashed #e5e7eb;
+  padding-bottom: 0.25rem;
+  padding-right: 1.5rem;
+}
+
+.grid-col span {
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
+.grid-col strong {
+  color: #1f2937;
+}
+
+.earnings-deductions-table {
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.earnings-deductions-table .table-header {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  background-color: #f3f4f6;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: #4b5563;
+}
+
+.earnings-deductions-table .table-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.amt-col {
+  text-align: right;
+}
+
+.payslip-summary-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  border-top: 2px solid #e5e7eb;
+  padding-top: 1rem;
+  gap: 0.5rem;
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  width: 250px;
+}
+
+.total-row span {
+  color: #4b5563;
+}
+
+.net-payout-row {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.net-payout-row span {
+  font-weight: 700;
+  color: #191258;
+}
+
+.net-payout-row h3 {
+  color: #191258;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.payslip-signatures {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3rem;
+  padding-top: 1rem;
+}
+
+.sig-block {
+  text-align: center;
+  width: 180px;
+}
+
+.sig-block .line {
+  border-top: 1px solid #9ca3af;
+  margin-bottom: 0.5rem;
+}
+
+.sig-block span {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+/* Print CSS Overrides */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .modal-backdrop, .modal-backdrop * {
+    visibility: visible;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .payslip-modal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  .payslip-invoice-sheet {
+    border: none !important;
+    padding: 0 !important;
+  }
+  .modal-backdrop {
+    background: none !important;
+    position: absolute !important;
+  }
+}
+
+/* Payroll Tabs */
+.payroll-tabs {
+  display: flex;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 0.5rem;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.tab-btn:hover {
+  color: var(--primary);
+  background-color: var(--surface-hover);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+/* History Filters */
+.history-filters {
+  display: flex;
+  gap: 1rem;
+}
+
+.filter-select {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-select:focus {
+  border-color: var(--primary);
+}
+
+/* Icon Action Buttons */
+.btn-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  transition: var(--transition);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.btn-approve {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--success);
+}
+.btn-approve:hover {
+  background-color: var(--success);
+  color: #fff;
+}
+
+.btn-reject {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+.btn-reject:hover {
+  background-color: var(--danger);
+  color: #fff;
+}
+
+.btn-edit {
+  background-color: var(--primary-light);
+  color: var(--primary);
+}
+.btn-edit:hover {
+  background-color: var(--primary);
+  color: #fff;
+}
+
+.pay-btn {
+  background-color: var(--success);
+  color: #fff;
+  border: none;
+}
+.pay-btn:hover {
+  background-color: #059669;
+}
+
+/* Status Pills Custom overrides */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.status-pill.status-pending {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+}
+
+.status-pill.status-approved {
+  background-color: var(--primary-light);
+  color: var(--primary);
+}
+
+.status-pill.status-paid {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+}
+
+.status-pill.status-rejected {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+/* Payroll Toolbar */
+.payroll-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.search-box-erp {
+  position: relative;
+  width: 320px;
+  height: 44px;
+}
+
+.search-box-erp input {
+  width: 100%;
+  height: 100%;
+  padding: 0 16px 0 40px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  outline: none;
+  font-size: 0.95rem;
+  transition: border-color 0.2s;
+  background: white;
+}
+
+.search-box-erp input:focus {
+  border-color: var(--primary);
+}
+
+.search-box-erp .search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.date-picker-erp {
+  width: 180px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  outline: none;
+  font-size: 0.95rem;
+  transition: border-color 0.2s;
+  background: white;
+}
+
+.date-picker-erp:focus {
+  border-color: var(--primary);
+}
+
+.btn-save-erp {
+  height: 44px;
+  padding: 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-save-erp:hover {
+  background-color: var(--primary-hover);
+}
+
+.btn-save-erp:disabled {
+  background-color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.card-erp {
+  background: white;
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  padding: 24px;
+  overflow: hidden;
+}
+
+.payroll-input-erp {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  outline: none;
+  font-size: 0.95rem;
+  transition: border-color 0.2s;
+  background: white;
+}
+
+.payroll-input-erp:focus {
+  border-color: var(--primary);
+}
+
+.payroll-input-erp.text-success {
+  color: var(--success);
+}
+
+.payroll-input-erp.text-danger {
+  color: var(--danger);
+}
+
+.payroll-input-erp:disabled {
+  background-color: var(--surface-hover);
+  color: var(--text-muted);
+}
+
+/* Gray color utilities */
+.text-gray-500 {
+  color: #6b7280;
+}
+.font-semibold {
+  font-weight: 600;
+}
+.text-sm {
+  font-size: 0.875rem;
+}
+
+@media (max-width: 768px) {
+  .payroll-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search-box-erp, .date-picker-erp, .btn-save-erp {
+    width: 100%;
+  }
+}

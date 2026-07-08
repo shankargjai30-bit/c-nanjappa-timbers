@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Employee {
+  id               String          @id
+  name             String
+  department       String
+  role             String
+  status           String
+  checkIn          String
+  checkOut         String
+  verified         Boolean
+  avatarColor      String?
+  phone            String?
+  email            String?
+  joiningDate      String?
+  shiftTiming      String?
+  faceBiometricId  String?
+  photo            String?
+  presentDays      Int
+  absentDays       Int
+  totalWorkingDays Int
+  otHours          Float
+  otAmountManual   Float?
+  basicSalary      Float
+  allowances       Float
+  deductions       Float
+  otRecords        OTRecord[]
+  payrollRecords   PayrollRecord[]
+}
+
+model ActivityLog {
+  id           String  @id
+  employeeName String
+  action       String
+  timestamp    Float
+  type         String
+  read         Boolean
+}
+
+model PayrollRecord {
+  id               String   @id
+  employeeId       String
+  employeeName     String
+  department       String
+  role             String
+  avatarColor      String?
+  month            String
+  basicSalary      Float
+  otHours          Float
+  otAmount         Float
+  allowances       Float
+  deductions       Float
+  netPay           Float
+  status           String
+  approvedBy       String?
+  approvalTime     String?
+  rejectionReason  String?
+  presentDays      Int
+  totalWorkingDays Int
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model OTRecord {
+  id               String   @id
+  employeeId       String
+  employeeName     String
+  department       String
+  role             String
+  avatarColor      String?
+  month            String
+  otHours          Float
+  otHourlyRate     Float
+  calculatedAmount Float
+  bonusAmount      Float
+  deductionAmount  Float
+  finalAmount      Float
+  notes            String?
+  status           String
+  approvedBy       String?
+  approvalTime     String?
+  rejectionReason  String?
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model DailyPayroll {
+  id               String   @id
+  employeeId       String
+  date             String
+  attendanceStatus String
+  dailyWage        Float
+  timberQuantity   Float?
+  ratePerUnit      Float?
+  bonus            Float
+  deduction        Float
+  finalAmount      Float
+  remarks          String?
+  createdBy        String
+  createdAt        Float
+  updatedAt        Float
+}

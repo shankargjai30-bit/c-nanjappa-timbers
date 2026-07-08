@@ -1,0 +1,220 @@
+.ot-management-page {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* OT Rate Banner Styling */
+.ot-rate-banner {
+  background-color: var(--primary-light);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.banner-icon-bg {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  background-color: var(--primary);
+  color: var(--text-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.banner-content h3 {
+  font-size: 1.05rem;
+  color: var(--secondary);
+  font-weight: 600;
+  margin-bottom: 0.125rem;
+}
+
+.banner-content p {
+  font-size: 0.875rem;
+  color: var(--text-main);
+  line-height: 1.4;
+}
+
+/* Checkbox alignment in override forms */
+.checkbox-override-group {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--warning);
+}
+
+/* OT Tabs */
+.payroll-tabs {
+  display: flex;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 0.5rem;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.tab-btn:hover {
+  color: var(--primary);
+  background-color: var(--surface-hover);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+/* History Filters */
+.history-filters {
+  display: flex;
+  gap: 1rem;
+}
+
+.filter-select {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-select:focus {
+  border-color: var(--primary);
+}
+
+/* Icon Action Buttons */
+.btn-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  transition: var(--transition);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.btn-approve {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--success);
+}
+.btn-approve:hover {
+  background-color: var(--success);
+  color: #fff;
+}
+
+.btn-reject {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+.btn-reject:hover {
+  background-color: var(--danger);
+  color: #fff;
+}
+
+.btn-edit {
+  background-color: var(--primary-light);
+  color: var(--primary);
+}
+.btn-edit:hover {
+  background-color: var(--primary);
+  color: #fff;
+}
+
+/* Status Pills */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status-pill.status-pending {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+}
+
+.status-pill.status-approved {
+  background-color: var(--primary-light);
+  color: var(--primary);
+}
+
+.status-pill.status-paid {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+}
+
+.status-pill.status-rejected {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+/* Micro-animations */
+.pulse-icon-slow {
+  animation: banner-pulse 3s infinite ease-in-out;
+}
+
+@keyframes banner-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.9;
+  }
+}
+
+.slide-down-animation {
+  animation: slideDown 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -1,0 +1,108 @@
+.attendance-page {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* Tabs Styling */
+.tab-buttons {
+  display: flex;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0.25rem;
+  border-radius: var(--radius-lg);
+  gap: 0.25rem;
+}
+
+.tab-btn {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  transition: var(--transition);
+}
+
+.tab-btn:hover {
+  color: var(--text-main);
+  background-color: var(--surface-hover);
+}
+
+.tab-btn.active {
+  background-color: var(--primary);
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Progress bar styling */
+.progress-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 140px;
+}
+
+.progress-bar-container {
+  flex: 1;
+  height: 6px;
+  background-color: var(--border-light);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 0.4s ease;
+}
+
+.progress-bar.high { background-color: var(--success); }
+.progress-bar.medium { background-color: var(--warning); }
+.progress-bar.low { background-color: var(--danger); }
+
+.rate-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-main);
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Status indicator on compliance */
+.status-pill.compliance-pill.high {
+  background-color: var(--success-bg);
+  color: var(--success);
+}
+.status-pill.compliance-pill.medium {
+  background-color: var(--warning-bg);
+  color: var(--warning);
+}
+.status-pill.compliance-pill.low {
+  background-color: var(--danger-bg);
+  color: var(--danger);
+}
+
+/* Time entries */
+.check-time {
+  font-family: monospace;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.check-in-time {
+  font-weight: 600;
+}
+
+.date-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
