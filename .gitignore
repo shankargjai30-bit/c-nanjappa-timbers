@@ -13,8 +13,8 @@ dist-ssr
 *.local
 
 # Environment variables (secrets - never commit these)
-.env
-.env.*
+# .env
+# .env.*
 !.env.example
 
 # Firebase service account credentials (contains private keys - never commit)
