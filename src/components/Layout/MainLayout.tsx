@@ -1,5 +1,5 @@
-import { Suspense } from 'react';
-import { Outlet } from 'react-router-dom';
+import { useState, useEffect, Suspense } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 import ErrorBoundary from '../ErrorBoundary';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
@@ -12,11 +12,30 @@ const PageLoader = () => (
 );
 
 export default function MainLayout() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const location = useLocation();
+
+  // Automatically close mobile menu whenever route changes
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  const toggleMobileMenu = () => setIsMobileMenuOpen(prev => !prev);
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
   return (
     <div className="main-layout">
-      <Sidebar />
+      {/* Mobile Drawer Backdrop Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="sidebar-backdrop" 
+          onClick={closeMobileMenu}
+          aria-hidden="true"
+        />
+      )}
+      <Sidebar isOpen={isMobileMenuOpen} onClose={closeMobileMenu} />
       <div className="layout-content">
-        <Topbar />
+        <Topbar onToggleMobileMenu={toggleMobileMenu} isMobileMenuOpen={isMobileMenuOpen} />
         <main className="page-container">
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>

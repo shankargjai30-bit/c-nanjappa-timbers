@@ -1,12 +1,16 @@
-import React, { useState, useMemo } from 'react';
-import { MoreVertical, Search, Filter, Plus, X, Users, AlertTriangle, Edit2, Trash2, UploadCloud } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import React, { useState, useMemo, useRef } from 'react';
+import { MoreVertical, Search, Filter, Plus, X, Users, AlertTriangle, Edit2, Trash2, UploadCloud, Loader2 } from 'lucide-react';
+import { useApp, fetchWithAuth, getApiBaseUrl } from '../context/AppContext';
 import type { Employee } from '../context/AppContext';
 import employeesBg from '../assets/dashboard-backgrounds/employees-bg.webp';
 import './Employees.css';
 
 export default function Employees() {
-  const { employees, addEmployee, updateEmployee, deleteEmployee, payrollHistory, otHistory, toasts, addToast } = useApp();
+  const { employees, addEmployee, updateEmployee, deleteEmployee, payrollHistory, otHistory, addToast, removeToast } = useApp();
+
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadToastIdRef = useRef<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
@@ -21,7 +25,24 @@ export default function Employees() {
   
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState<Partial<Employee>>({});
+  // Form State
+  const initialFormState = {
+    id: '',
+    name: '',
+    department: 'Cutting',
+    role: 'Operator',
+    status: 'Absent' as const,
+    basicSalary: 15000,
+    allowances: 0,
+    deductions: 0,
+    phone: '',
+    email: '',
+    joiningDate: new Date().toISOString().split('T')[0],
+    shiftTiming: '09:00 AM - 06:00 PM',
+    photo: ''
+  };
+
+  const [formData, setFormData] = useState<Partial<Employee>>(initialFormState);
 
   const filteredEmployees = useMemo(() => {
     return employees.filter(emp => {
@@ -37,99 +58,109 @@ export default function Employees() {
 
   const openAddModal = () => {
     setModalMode('add');
+    setFormData(initialFormState);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (employee: Employee) => {
+    setModalMode('edit');
+    setSelectedEmployee(employee);
     setFormData({
-      name: '',
-      department: '',
-      role: '',
-      phone: '',
-      email: '',
-      joiningDate: '',
-      shiftTiming: '',
-      paymentType: 'Daily Wage Worker',
-      basicSalary: 0,
-      faceBiometricId: '',
-      status: 'Active',
-      photo: ''
+      id: employee.id,
+      name: employee.name,
+      department: employee.department,
+      role: employee.role,
+      status: employee.status as any,
+      basicSalary: employee.basicSalary,
+      allowances: employee.allowances,
+      deductions: employee.deductions,
+      phone: employee.phone || '',
+      email: employee.email || '',
+      joiningDate: employee.joiningDate || new Date().toISOString().split('T')[0],
+      shiftTiming: employee.shiftTiming || '09:00 AM - 06:00 PM',
+      photo: employee.photo || ''
     });
     setIsModalOpen(true);
   };
 
-  const openEditModal = (emp: Employee) => {
-    setModalMode('edit');
-    setSelectedEmployee(emp);
-    setFormData({ ...emp });
-    setIsModalOpen(true);
-    setActiveMenuId(null);
-  };
-
-  const openDeleteModal = (emp: Employee) => {
-    setSelectedEmployee(emp);
+  const openDeleteModal = (employee: Employee) => {
+    setSelectedEmployee(employee);
     setIsDeleteModalOpen(true);
-    setActiveMenuId(null);
   };
 
   const closeModals = () => {
     setIsModalOpen(false);
     setIsDeleteModalOpen(false);
     setSelectedEmployee(null);
+    setActiveMenuId(null);
   };
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
-    let finalValue = value;
+    let finalValue: any = value;
     if (type === 'number') {
-      if (value.length > 1 && value.startsWith('0') && !value.startsWith('0.')) {
-        finalValue = value.replace(/^0+/, '') || '0';
-      }
+      finalValue = Number(value);
     }
     setFormData(prev => ({ ...prev, [name]: finalValue }));
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.match('image/jpeg') && !file.type.match('image/png')) {
-        addToast('Please upload a JPG or PNG image.', 'error');
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        addToast('Image size must be less than 5MB.', 'error');
-        return;
-      }
-      
-      addToast('Uploading image...', 'info');
-      
-      try {
+    e.target.value = '';
+
+    if (!file) return;
+
+    if (isUploading) return;
+
+    if (!file.type.match('image/jpeg') && !file.type.match('image/png') && !file.type.match('image/jpg')) {
+      addToast('Please upload a JPG or PNG image.', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      addToast('Image size must be less than 5MB.', 'error');
+      return;
+    }
+    
+    setIsUploading(true);
+    const toastId = addToast('Uploading image...', 'info');
+    uploadToastIdRef.current = toastId;
+    
+    try {
+      const base64data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Failed to read image file'));
         reader.readAsDataURL(file);
-        reader.onloadend = async () => {
-          try {
-            const base64data = reader.result;
-            const res = await fetch('http://localhost:3000/api/upload', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ file: base64data })
-            });
-            
-            const json = await res.json();
-            
-            if (res.ok && json.secure_url) {
-              setFormData(prev => ({ ...prev, photo: json.secure_url }));
-              addToast('Photo uploaded successfully!', 'success');
-            } else {
-              throw new Error(json.error || "Failed to upload");
-            }
-          } catch (err: any) {
-            console.error("Upload error:", err);
-            addToast(err.message || 'Cloud upload failed. Please try again.', 'error');
-          }
-        };
-      } catch (err: any) {
-        console.error("File reading error:", err);
-        addToast('Failed to read image file.', 'error');
+      });
+
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: base64data })
+      });
+      
+      const json = await res.json().catch(() => ({}));
+      
+      if (uploadToastIdRef.current) {
+        removeToast(uploadToastIdRef.current);
+        uploadToastIdRef.current = null;
       }
+
+      if (res.ok && json.secure_url) {
+        setFormData(prev => ({ ...prev, photo: json.secure_url }));
+        addToast('Employee photo uploaded successfully!', 'success');
+      } else {
+        throw new Error(json.error || `Server returned error (${res.status}): Failed to upload photo`);
+      }
+    } catch (err: any) {
+      if (uploadToastIdRef.current) {
+        removeToast(uploadToastIdRef.current);
+        uploadToastIdRef.current = null;
+      }
+      console.error('Upload error:', err);
+      addToast(err.message || 'Photo upload failed. Please verify server connection.', 'error');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -185,15 +216,6 @@ export default function Employees() {
         </button>
       </div>
 
-      {toasts && toasts.length > 0 && (
-        <div className="toast-container">
-          {toasts.map(toast => (
-            <div key={toast.id} className={`toast ${toast.type}`}>
-              {toast.message}
-            </div>
-          ))}
-        </div>
-      )}
 
       <div className="table-card card">
         <div className="table-toolbar">
@@ -409,9 +431,27 @@ export default function Employees() {
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Upload Employee Photo</label>
                   <div className="photo-upload-container">
-                    <input type="file" id="photo-upload" accept="image/jpeg, image/png, image/jpg" onChange={handlePhotoUpload} style={{ display: 'none' }} />
-                    <label htmlFor="photo-upload" className="upload-box">
-                      {formData.photo ? (
+                    <input 
+                      type="file" 
+                      id="photo-upload" 
+                      ref={fileInputRef}
+                      accept="image/jpeg, image/png, image/jpg" 
+                      onChange={handlePhotoUpload} 
+                      disabled={isUploading}
+                      style={{ display: 'none' }} 
+                    />
+                    <label 
+                      htmlFor="photo-upload" 
+                      className={`upload-box ${isUploading ? 'uploading-state' : ''}`}
+                      style={{ cursor: isUploading ? 'not-allowed' : 'pointer', opacity: isUploading ? 0.7 : 1 }}
+                    >
+                      {isUploading ? (
+                        <div className="upload-placeholder">
+                          <Loader2 size={32} className="animate-spin text-primary" style={{ animation: 'spin 1s linear infinite' }} />
+                          <span>Uploading image to cloud...</span>
+                          <small>Please wait</small>
+                        </div>
+                      ) : formData.photo ? (
                         <div className="upload-preview">
                           <img src={formData.photo} alt="Preview" />
                           <div className="upload-overlay">

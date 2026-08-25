@@ -13,6 +13,8 @@ const OTManagement = lazy(() => import('./pages/OTManagement'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Settings = lazy(() => import('./pages/Settings'));
 
+import { ToastContainer } from './components/Common/ToastContainer';
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, authLoading, managerProfile } = useApp();
   
@@ -35,36 +37,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-const GlobalToasts = () => {
-  const { toasts, removeToast } = useApp();
-  if (!toasts || toasts.length === 0) return null;
-  return (
-    <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      {toasts.map(t => (
-        <div key={t.id} style={{
-          padding: '12px 20px', 
-          borderRadius: '8px', 
-          background: t.type === 'error' ? '#fee2e2' : t.type === 'success' ? '#dcfce7' : t.type === 'warning' ? '#fef3c7' : '#e0e7ff',
-          color: t.type === 'error' ? '#991b1b' : t.type === 'success' ? '#166534' : t.type === 'warning' ? '#92400e' : '#3730a3',
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          minWidth: '250px',
-          fontWeight: 500
-        }}>
-          <span>{t.message}</span>
-          <button onClick={() => removeToast(t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'inherit', opacity: 0.7, padding: '0 0 0 15px' }}>&times;</button>
-        </div>
-      ))}
-    </div>
-  );
-};
-
 function App() {
   return (
     <AppContextProvider>
-      <GlobalToasts />
+      <ToastContainer />
       <Router>
         <Routes>
           <Route path="/login" element={

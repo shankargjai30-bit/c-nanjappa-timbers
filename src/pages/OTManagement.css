@@ -64,7 +64,8 @@
   padding-bottom: 0.5rem;
 }
 
-.tab-btn {
+/* Scope to .payroll-tabs to prevent bleed from Attendance.css global .tab-btn.active */
+.payroll-tabs .tab-btn {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -79,15 +80,18 @@
   transition: var(--transition);
 }
 
-.tab-btn:hover {
+.payroll-tabs .tab-btn:hover {
   color: var(--primary);
   background-color: var(--surface-hover);
   border-radius: var(--radius-md) var(--radius-md) 0 0;
 }
 
-.tab-btn.active {
+.payroll-tabs .tab-btn.active {
   color: var(--primary);
+  background: transparent;
   border-bottom-color: var(--primary);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 /* History Filters */

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bell, Search, CheckCircle, AlertCircle, Info, Clock, Check, Trash2 } from 'lucide-react';
+import { Bell, Search, CheckCircle, AlertCircle, Info, Clock, Check, Trash2, Menu, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import './Topbar.css';
 
@@ -15,8 +15,13 @@ const formatTimeAgo = (timestamp: number) => {
   return `${days} days ago`;
 };
 
-export default function Topbar() {
-  const { activityLogs, markAllLogsRead, clearLogs } = useApp();
+interface TopbarProps {
+  onToggleMobileMenu?: () => void;
+  isMobileMenuOpen?: boolean;
+}
+
+export default function Topbar({ onToggleMobileMenu, isMobileMenuOpen = false }: TopbarProps) {
+  const { activityLogs, markAllLogsRead, clearLogs, searchQuery, setSearchQuery } = useApp();
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -48,9 +53,26 @@ export default function Topbar() {
 
   return (
     <header className="topbar">
-      <div className="topbar-search">
-        <Search size={18} className="search-icon" />
-        <input type="text" placeholder="Search employees, reports, etc..." />
+      <div className="topbar-left">
+        {/* Mobile Hamburger Button */}
+        <button 
+          className="hamburger-btn" 
+          onClick={onToggleMobileMenu} 
+          aria-label="Toggle navigation menu"
+          aria-expanded={isMobileMenuOpen}
+        >
+          {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
+
+        <div className="topbar-search">
+          <Search size={18} className="search-icon" />
+          <input 
+            type="text" 
+            placeholder="Search employees, reports, etc..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
       </div>
       
       <div className="topbar-actions">

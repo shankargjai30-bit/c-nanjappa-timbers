@@ -8,7 +8,8 @@ import {
   Clock, 
   FileText, 
   Settings,
-  LogOut
+  LogOut,
+  X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import './Sidebar.css';
@@ -24,12 +25,17 @@ const navItems = [
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const location = useLocation();
   const { managerProfile, logout } = useApp();
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'mobile-open' : ''}`}>
       <div className="sidebar-header">
         <div className="logo-container">
           <div className="logo-mark">
@@ -40,6 +46,14 @@ export default function Sidebar() {
             <span>ERP System</span>
           </div>
         </div>
+        {/* Mobile-only close button */}
+        <button 
+          className="sidebar-close-btn" 
+          onClick={onClose} 
+          aria-label="Close navigation menu"
+        >
+          <X size={20} />
+        </button>
       </div>
       
       <nav className="sidebar-nav">
@@ -52,6 +66,7 @@ export default function Sidebar() {
                 <NavLink 
                   to={item.path} 
                   className={`nav-link ${isActive ? 'active' : ''}`}
+                  onClick={() => onClose?.()}
                 >
                   <Icon size={20} className="nav-icon" />
                   <span>{item.label}</span>

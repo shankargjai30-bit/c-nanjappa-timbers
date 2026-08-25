@@ -4,6 +4,51 @@
   gap: 2rem;
 }
 
+/* Export Actions Container */
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* Consistent Report Action Button — both Export Excel and Print PDF */
+.btn-report-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: var(--primary);
+  color: #ffffff;
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  min-width: 160px;
+  height: 44px;
+  box-sizing: border-box;
+  box-shadow: 0 2px 8px rgba(25, 18, 88, 0.18);
+}
+
+.btn-report-action:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(25, 18, 88, 0.25);
+}
+
+.btn-report-action:disabled {
+  background-color: var(--surface-hover);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
+  transform: none;
+}
+
 /* Department dropdown picker in toolbar */
 .filter-toolbar-action {
   display: flex;
@@ -80,6 +125,50 @@
 
 .empty-reports-state p {
   font-size: 0.875rem;
+}
+
+/* =========================================================
+   RESPONSIVE BREAKPOINTS
+   ========================================================= */
+
+@media (max-width: 768px) {
+  .reports-page {
+    gap: 1.5rem;
+  }
+
+  /* Stack export buttons vertically on tablet */
+  .export-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 0.625rem;
+  }
+
+  .btn-report-action {
+    width: 100%;
+    min-width: unset;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .reports-page {
+    gap: 1.25rem;
+  }
+
+  .export-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 0.625rem;
+  }
+
+  .btn-report-action {
+    width: 100%;
+    min-width: unset;
+    height: 48px;
+    font-size: 0.9375rem;
+  }
 }
 
 /* Audit Report sheet print refinements */

@@ -30,28 +30,54 @@ export default function FaceBiometrics() {
   
   const faceMatcherRef = useRef<faceapi.FaceMatcher | null>(null);
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const encodedEmployeeIds = useRef(new Set<string>());
+  
+  // Dynamic biometrics diagnostic data state
+  const [diagnosticData, setDiagnosticData] = useState<Record<string, {
+    status: 'Ready' | 'No Face Located' | 'No Photo' | 'Loading' | 'Error';
+    details?: string;
+  }>>({});
+  
+  // Refs to control non-overlapping scanning loops
+  const scanActiveRef = useRef(false);
+  const isScanningRef = useRef(false);
 
-  // Cleanup on unmount only
+  useEffect(() => {
+    isScanningRef.current = isScanning;
+    if (isScanning) {
+      if (videoRef.current && videoRef.current.readyState >= 2) {
+        startScanningLoop();
+      }
+    } else {
+      scanActiveRef.current = false;
+    }
+  }, [isScanning]);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      scanActiveRef.current = false;
+      isScanningRef.current = false;
       if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
-      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
       if (videoRef.current && videoRef.current.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
+  
   const modeRef = useRef<'check-in' | 'check-out'>('check-in');
+  const lastMismatchToastRef = useRef<number>(0);
+  const MISMATCH_TOAST_COOLDOWN_MS = 5000;
 
   useEffect(() => {
     modeRef.current = attendanceMode;
   }, [attendanceMode]);
 
   const startCamera = async () => {
+    if (isScanning || scanActiveRef.current) return;
     try {
+      lastMismatchToastRef.current = 0;
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -69,19 +95,22 @@ export default function FaceBiometrics() {
 
   const stopCamera = () => {
     setIsScanning(false);
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
+    scanActiveRef.current = false;
+    isScanningRef.current = false;
     if (videoRef.current && videoRef.current.srcObject) {
       (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
       videoRef.current.srcObject = null;
     }
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    lastMismatchToastRef.current = 0;
   };
 
   useEffect(() => {
     const loadModelsAndData = async () => {
-      const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+      const MODEL_URL = '/models'; // Local weights assets path
       try {
         if (!isModelLoaded) {
           await Promise.all([
@@ -95,10 +124,20 @@ export default function FaceBiometrics() {
         const labeledDescriptors = faceMatcherRef.current ? [...faceMatcherRef.current.labeledDescriptors] : [];
         let hasNewData = false;
         
+        // Initialize placeholders in diagnostic list
+        employees.forEach(emp => {
+          if (!emp.photo) {
+            setDiagnosticData(prev => ({ ...prev, [emp.id]: { status: 'No Photo', details: 'No registration photo uploaded.' } }));
+          } else if (!encodedEmployeeIds.current.has(emp.id)) {
+            setDiagnosticData(prev => ({ ...prev, [emp.id]: { status: 'Loading', details: 'Awaiting neural landmarks detection...' } }));
+          }
+        });
+        
         for (const emp of employees) {
           if (emp.photo && !encodedEmployeeIds.current.has(emp.id)) {
             try {
               const img = new Image();
+              img.crossOrigin = 'anonymous';
               img.src = emp.photo;
               await new Promise((resolve, reject) => {
                 img.onload = resolve;
@@ -110,6 +149,7 @@ export default function FaceBiometrics() {
                 .withFaceDescriptor();
 
               if (!detection) {
+                // Fallback to tiny face detector
                 detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
                   .withFaceLandmarks()
                   .withFaceDescriptor();
@@ -119,10 +159,28 @@ export default function FaceBiometrics() {
                 labeledDescriptors.push(new faceapi.LabeledFaceDescriptors(emp.id, [detection.descriptor]));
                 encodedEmployeeIds.current.add(emp.id);
                 hasNewData = true;
+                setDiagnosticData(prev => ({ 
+                  ...prev, 
+                  [emp.id]: { status: 'Ready', details: 'Face landmarks descriptor generated and loaded in memory.' } 
+                }));
+              } else {
+                setDiagnosticData(prev => ({ 
+                  ...prev, 
+                  [emp.id]: { status: 'No Face Located', details: 'Landmarks extraction failed. Ensure your registration photo is a clear, front-facing portrait with good lighting.' } 
+                }));
               }
-            } catch (e) {
+            } catch (e: any) {
               console.error(`Failed to load descriptor for employee ${emp.name}`, e);
+              setDiagnosticData(prev => ({ 
+                ...prev, 
+                [emp.id]: { status: 'Error', details: `Image load failure: ${e?.message || 'Check storage or networking.'}` } 
+              }));
             }
+          } else if (emp.photo && encodedEmployeeIds.current.has(emp.id)) {
+            setDiagnosticData(prev => ({ 
+              ...prev, 
+              [emp.id]: { status: 'Ready', details: 'Face landmarks descriptor loaded in memory.' } 
+            }));
           }
         }
 
@@ -131,91 +189,118 @@ export default function FaceBiometrics() {
         }
 
         setIsModelLoaded(true);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error loading face-api models", err);
+        addToast('Failed to load local face models. Models directory mismatch.', 'error');
+        employees.forEach(emp => {
+          if (emp.photo) {
+            setDiagnosticData(prev => ({ 
+              ...prev, 
+              [emp.id]: { status: 'Error', details: `Model load error: ${err?.message || 'Check local server hosting.'}` } 
+            }));
+          }
+        });
       }
     };
+    
     loadModelsAndData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employees]);
 
-  const handleVideoPlay = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    
+  // Recursive Non-Overlapping Webcam Scanning Loop
+  const startScanningLoop = () => {
+    if (scanActiveRef.current) return;
+    scanActiveRef.current = true;
+
     const canvas = canvasRef.current;
+    if (!videoRef.current || !canvas) {
+      scanActiveRef.current = false;
+      return;
+    }
+
     const displaySize = { width: videoRef.current.videoWidth, height: videoRef.current.videoHeight };
     faceapi.matchDimensions(canvas, displaySize);
 
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+    const loop = async () => {
+      // Loop guard checks
+      if (!scanActiveRef.current || !videoRef.current || !isScanningRef.current) {
+        scanActiveRef.current = false;
+        return;
+      }
 
-    scanIntervalRef.current = setInterval(async () => {
-      if (!videoRef.current || !isScanning) return;
-      
-      setScanResult((currentScanResult) => {
-        if (currentScanResult) return currentScanResult;
-        
-        (async () => {
-          const detections = await faceapi.detectAllFaces(videoRef.current!, new faceapi.TinyFaceDetectorOptions())
-            .withFaceLandmarks()
-            .withFaceDescriptors();
-          
-          if (!canvasRef.current) return;
-          const resizedDetections = faceapi.resizeResults(detections, displaySize);
-          canvasRef.current.getContext('2d')?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-          
-          let matched = false;
+      try {
+        const detections = await faceapi.detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptors();
 
-          resizedDetections.forEach(detection => {
-            const box = detection.detection.box;
-            const ctx = canvasRef.current!.getContext('2d');
-            if (ctx) {
-              ctx.strokeStyle = 'rgba(35, 31, 133, 0.8)';
-              ctx.lineWidth = 3;
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-              
-              if (!matched) {
-                if (faceMatcherRef.current) {
-                  const bestMatch = faceMatcherRef.current.findBestMatch(detection.descriptor);
-                  if (bestMatch.label !== 'unknown') {
-                    matched = true;
-                    handleMatchSuccess(bestMatch.label, bestMatch.distance);
-                  } else if (detection.detection.score > 0.8) {
-                    matched = true;
-                    
-                    let bestEmpName = "Unknown Person";
-                    let bestDist = 1.0;
-                    faceMatcherRef.current.labeledDescriptors.forEach(ld => {
-                       ld.descriptors.forEach(d => {
-                          const dist = faceapi.euclideanDistance(detection.descriptor, d);
-                          if (dist < bestDist) {
-                             bestDist = dist;
-                             const emp = employees.find(e => e.id === ld.label);
-                             if (emp) bestEmpName = emp.name;
-                          }
-                       });
-                    });
-                    
-                    handleMatchFailed("Face Not Recognized", bestEmpName);
-                  }
+        if (!canvasRef.current || !scanActiveRef.current) return;
+        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+        canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+
+        let matched = false;
+
+        resizedDetections.forEach(detection => {
+          const box = detection.detection.box;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.strokeStyle = 'rgba(35, 31, 133, 0.8)';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+            if (!matched) {
+              if (faceMatcherRef.current) {
+                const bestMatch = faceMatcherRef.current.findBestMatch(detection.descriptor);
+                if (bestMatch.label !== 'unknown') {
+                  matched = true;
+                  handleMatchSuccess(bestMatch.label, bestMatch.distance);
                 } else if (detection.detection.score > 0.8) {
                   matched = true;
-                  handleMatchFailed("No employees configured with photos.");
+                  let bestEmpName = "Unknown Person";
+                  let bestDist = 1.0;
+                  faceMatcherRef.current.labeledDescriptors.forEach(ld => {
+                    ld.descriptors.forEach(d => {
+                      const dist = faceapi.euclideanDistance(detection.descriptor, d);
+                      if (dist < bestDist) {
+                        bestDist = dist;
+                        const emp = employees.find(e => e.id === ld.label);
+                        if (emp) bestEmpName = emp.name;
+                      }
+                    });
+                  });
+                  handleMatchFailed("Face Not Recognized", bestEmpName);
                 }
+              } else if (detection.detection.score > 0.8) {
+                matched = true;
+                handleMatchFailed("Face recognition not ready. Check the Biometric Status panel — employee photos may still be loading.");
               }
             }
-          });
-        })();
-        
-        return currentScanResult;
-      });
-    }, 500);
+          }
+        });
+      } catch (err) {
+        console.error("Frame detection loop error:", err);
+      }
+
+      // Schedule next check only after the current check finishes
+      if (scanActiveRef.current && isScanningRef.current) {
+        setTimeout(loop, 100); // 100ms throttle to prevent CPU thrashing
+      } else {
+        scanActiveRef.current = false;
+      }
+    };
+
+    loop();
+  };
+
+  const handleVideoPlay = () => {
+    if (isScanningRef.current) {
+      startScanningLoop();
+    }
   };
 
   const handleMatchSuccess = (empId: string, distance: number) => {
     setScanResult('processing');
     stopCamera();
     
-    // We use a small timeout to allow state updates to settle before showing success
     setTimeout(async () => {
       const emp = employees.find(e => e.id === empId);
       if (!emp) {
@@ -223,39 +308,29 @@ export default function FaceBiometrics() {
         return;
       }
 
-      let determinedAction: 'check-in' | 'check-out' = 'check-in';
-      if (emp.status === 'Absent' || emp.status === 'On Leave' || emp.status === 'Late' || !emp.checkIn || emp.checkIn === '--') {
-        determinedAction = 'check-in';
-      } else if (emp.checkIn && emp.checkIn !== '--' && (!emp.checkOut || emp.checkOut === '--')) {
-        determinedAction = 'check-out';
-      } else {
-        addToast("Attendance Already Marked", "error");
-        addActivityLog(emp.name, "scanned but attendance already marked for today", "warning");
-        handleMatchFailed("Attendance already completed for today");
-        return;
-      }
-
-      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const confidence = Math.round((1 - distance) * 100);
-
-      const result = await processBiometricAttendance(empId, determinedAction, timeStr);
+      const currentMode = modeRef.current; // Read from ref — never stale inside async closure
+      const result = await processBiometricAttendance(empId, currentMode);
       
       if (!result.success) {
-        addToast(result.error === 'Employee already checked in today' || result.error === 'Employee already checked out today' ? "Attendance Already Marked" : "Verification failed", "error");
+        addToast(result.error || "Verification failed", "error");
         handleMatchFailed(result.error || "Verification failed");
         return;
       }
 
-      addToast(`${determinedAction === 'check-in' ? 'Check In' : 'Check Out'} Successful`, "success");
+      const action = result.action;
+      const timeStr = result.time;
+
+      addToast(`${action === 'check-in' ? 'Check In' : 'Check Out'} Successful`, "success");
       setScanResult('success');
       setMatchedEmployee({
         id: emp.id,
         name: emp.name,
         department: emp.department,
-        time: timeStr,
-        status: determinedAction === 'check-in' ? 'Checked In' : 'Checked Out',
+        time: timeStr || '',
+        status: action === 'check-in' ? 'Checked In' : 'Checked Out',
         confidence,
-        action: determinedAction,
+        action: (action as 'check-in' | 'check-out') || 'check-in',
         hoursWorked: result.hoursWorked,
         otHours: result.otHours
       });
@@ -263,7 +338,7 @@ export default function FaceBiometrics() {
       scanTimeoutRef.current = setTimeout(() => {
         setScanResult(null);
         setMatchedEmployee(null);
-      }, 6000); // Wait 6 seconds before clearing screen so they can read it
+      }, 6000);
     }, 100);
   };
 
@@ -272,10 +347,15 @@ export default function FaceBiometrics() {
     setScanErrorMsg(msg);
     
     if (msg === "Face Not Recognized") {
-      addToast("Face Not Matched", "error");
-      addActivityLog(empName || "Unknown Person", "Face verification failed", "warning");
+      const now = Date.now();
+      if (now - lastMismatchToastRef.current > MISMATCH_TOAST_COOLDOWN_MS) {
+        lastMismatchToastRef.current = now;
+        addToast("Face Not Matched", "error");
+        addActivityLog(empName || "Unknown Person", "Face verification failed", "warning");
+      }
     }
     
+    if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
     scanTimeoutRef.current = setTimeout(() => {
       setScanResult(null);
       setScanErrorMsg(null);
@@ -311,42 +391,57 @@ export default function FaceBiometrics() {
 
       <div className="biometrics-grid">
         <div className="scanner-section">
-          <div className="mode-toggle-container" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <button 
-              className={`mode-btn ${attendanceMode === 'check-in' ? 'active check-in' : ''}`}
-              onClick={() => setAttendanceMode('check-in')}
-              style={{ flex: '1 1 45%' }}
-            >
-              <LogIn size={20} />
-              Auto Check In
-            </button>
-            <button 
-              className={`mode-btn ${attendanceMode === 'check-out' ? 'active check-out' : ''}`}
-              onClick={() => setAttendanceMode('check-out')}
-              style={{ flex: '1 1 45%' }}
-            >
-              <LogOut size={20} />
-              Auto Check Out
-            </button>
-            <button 
-              className={`mode-btn`}
-              onClick={startCamera}
-              disabled={isScanning || !isModelLoaded}
-              style={{ flex: '1 1 45%', backgroundColor: isScanning ? 'var(--surface-hover)' : 'var(--primary)', color: isScanning ? 'var(--text-muted)' : 'white' }}
-            >
-              <Camera size={20} /> Start Scanning
-            </button>
-            <button 
-              className={`mode-btn`}
-              onClick={stopCamera}
-              disabled={!isScanning}
-              style={{ flex: '1 1 45%', backgroundColor: !isScanning ? 'var(--surface-hover)' : 'var(--danger)', color: !isScanning ? 'var(--text-muted)' : 'white' }}
-            >
-              <XCircle size={20} /> Stop Scanning
-            </button>
+          <div className="biometric-actions-wrapper">
+            <div className="workflow-section">
+              <div className="workflow-step-badge">1. Select Mode</div>
+              <div className="mode-selector-container">
+                <button 
+                  type="button"
+                  className={`mode-btn ${attendanceMode === 'check-in' ? 'active check-in' : ''}`}
+                  onClick={() => setAttendanceMode('check-in')}
+                  aria-pressed={attendanceMode === 'check-in'}
+                >
+                  <LogIn size={18} />
+                  Check In Mode
+                </button>
+                <button 
+                  type="button"
+                  className={`mode-btn ${attendanceMode === 'check-out' ? 'active check-out' : ''}`}
+                  onClick={() => setAttendanceMode('check-out')}
+                  aria-pressed={attendanceMode === 'check-out'}
+                >
+                  <LogOut size={18} />
+                  Check Out Mode
+                </button>
+              </div>
+            </div>
+
+            <div className="workflow-section">
+              <div className="workflow-step-badge">2. Scan Control</div>
+              <div className="scan-controls-container">
+                <button 
+                  type="button"
+                  className="scan-action-btn start-scan-btn"
+                  onClick={startCamera}
+                  disabled={isScanning || !isModelLoaded}
+                >
+                  <Camera size={18} />
+                  {isScanning ? 'Scanning Active' : 'Start Scanning'}
+                </button>
+                <button 
+                  type="button"
+                  className="scan-action-btn stop-scan-btn"
+                  onClick={stopCamera}
+                  disabled={!isScanning}
+                >
+                  <XCircle size={18} />
+                  Stop Scanning
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div className="scanner-card card mt-4">
+          <div className="scanner-card card">
             <div className="camera-container">
               {!isModelLoaded && (
                 <div className="camera-loading">
@@ -358,6 +453,7 @@ export default function FaceBiometrics() {
                 ref={videoRef} 
                 autoPlay 
                 muted 
+                playsInline
                 onPlay={handleVideoPlay}
                 className={isModelLoaded ? 'active' : 'hidden'}
               />
@@ -439,7 +535,7 @@ export default function FaceBiometrics() {
             </div>
           )}
 
-          <div className="recent-scans card mt-6">
+          <div className="recent-scans card">
             <div className="card-header">
               <h3>Recent Activity</h3>
             </div>
@@ -458,6 +554,78 @@ export default function FaceBiometrics() {
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Dynamic Biometric Diagnostics Panel */}
+      <div className="diagnostics-panel card p-6">
+        <div className="card-header border-b pb-4 mb-4" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '1rem' }}>
+          <h3 className="text-xl font-bold flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+            <ScanFace size={24} style={{ color: 'var(--primary)' }} />
+            Biometric Registration Diagnostics
+          </h3>
+          <p className="text-muted text-sm mt-1" style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem', marginBottom: 0 }}>
+            Real-time status of face descriptors compiled into gate scanner memory. Invalid photos will fail checks.
+          </p>
+        </div>
+        
+        <div className="diagnostics-grid">
+          {employees.map(emp => {
+            const diag = diagnosticData[emp.id] || { status: emp.photo ? 'Loading' : 'No Photo', details: 'Awaiting initialization...' };
+            
+            let statusColor = 'var(--text-muted)';
+            let statusBg = 'var(--surface-hover)';
+            
+            if (diag.status === 'Ready') {
+              statusColor = '#10b981';
+              statusBg = '#ecfdf5';
+            } else if (diag.status === 'No Face Located') {
+              statusColor = '#ef4444';
+              statusBg = '#fef2f2';
+            } else if (diag.status === 'Error') {
+              statusColor = '#f59e0b';
+              statusBg = '#fffbeb';
+            }
+            
+            return (
+              <div key={emp.id} className="p-4 rounded-lg border flex flex-col gap-3" style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {emp.photo ? (
+                    <img 
+                      src={emp.photo} 
+                      alt={emp.name} 
+                      style={{ width: '48px', height: '48px', minWidth: '48px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }}
+                    />
+                  ) : (
+                    <div 
+                      style={{ width: '48px', height: '48px', minWidth: '48px', borderRadius: '50%', border: '1px solid var(--border)', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'var(--text-muted)', backgroundColor: 'var(--surface-hover)' }}
+                    >
+                      <ScanFace size={20} />
+                    </div>
+                  )}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <h4 style={{ fontSize: '0.875rem', fontWeight: 'bold', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.name}</h4>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.id} | {emp.department}</p>
+                  </div>
+                </div>
+                
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span 
+                      style={{ fontSize: '0.75rem', fontWeight: '600', padding: '0.125rem 0.5rem', borderRadius: '9999px', color: statusColor, backgroundColor: statusBg }}
+                    >
+                      {diag.status}
+                    </span>
+                  </div>
+                  {diag.details && (
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.375rem', marginBottom: 0, lineHeight: '1.4', wordBreak: 'break-word' }}>
+                      {diag.details}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
       </div>

@@ -1,17 +1,43 @@
-/* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail, type User } from 'firebase/auth';
 import { auth } from '../firebase';
 
-const API_URL = 'http://localhost:3000/api';
-
-const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-  const token = auth.currentUser ? await auth.currentUser.getIdToken() : null;
-  const headers: Record<string, string> = { ...(options.headers as any) || {} };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+export const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const customUrl = localStorage.getItem('timberpro_api_url');
+    if (customUrl && customUrl.trim()) {
+      return customUrl.trim().replace(/\/+$/, '');
+    }
   }
-  return fetch(url, { ...options, headers });
+
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+
+  if (typeof window !== 'undefined' && window.location.origin && !window.location.origin.startsWith('capacitor://') && !window.location.origin.startsWith('file://')) {
+    return `${window.location.origin}/api`;
+  }
+
+  return '/api';
+};
+
+export const API_URL = getApiBaseUrl();
+
+export const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+  try {
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : null;
+    const headers: Record<string, string> = { ...(options.headers as any) || {} };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return await fetch(url, { ...options, headers });
+  } catch (err: any) {
+    if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server (${url}). Please verify that the backend is active, or configure your live server URL in Settings.`);
+    }
+    throw err;
+  }
 };
 
 
@@ -127,11 +153,13 @@ interface AppContextType {
   addEmployee: (emp: any) => Promise<void>;
   updateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
   deleteEmployee: (id: string) => Promise<void>;
-  addToast: (message: string, type: ToastMessage['type']) => void;
+  addToast: (message: string, type?: ToastMessage['type'], customId?: string) => string;
   removeToast: (id: string) => void;
   updateEmployeePayroll: (id: string, basic: number, allowances: number, deductions: number) => Promise<void>;
   updateEmployeeOT: (id: string, hours: number, manualAmount: number | null) => Promise<void>;
-  processBiometricAttendance: (employeeId: string, action: 'check-in' | 'check-out', timeStr: string) => Promise<{ success: boolean; error?: string; hoursWorked?: number; otHours?: number; }>;
+  processBiometricAttendance: (employeeId: string, mode: 'check-in' | 'check-out') => Promise<{ success: boolean; error?: string; action?: 'check-in' | 'check-out'; time?: string; hoursWorked?: number; otHours?: number; }>;
+  getAttendanceByDate: (date: string) => Promise<any[]>;
+  getAttendanceByMonth: (month: string) => Promise<any[]>;
   payrollHistory: PayrollRecord[];
   otHistory: OTRecord[];
   processSalary: (record: PayrollRecord) => Promise<void>;
@@ -150,6 +178,12 @@ interface AppContextType {
   loginWithGoogle: () => Promise<void>;
   authLoading: boolean;
   managerProfile: User | null;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  apiBaseUrl: string;
+  setCustomApiBaseUrl: (url: string) => void;
+  resetApiBaseUrl: () => void;
+  refreshData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -165,34 +199,54 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [payrollHistory, setPayrollHistory] = useState<PayrollRecord[]>([]);
   const [otHistory, setOtHistory] = useState<OTRecord[]>([]);
   const [dailyPayrollHistory, setDailyPayrollHistory] = useState<DailyPayrollRecord[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [apiBaseUrlState, setApiBaseUrlState] = useState<string>(getApiBaseUrl());
+
+  const refreshData = useCallback(async () => {
+    try {
+      const baseUrl = getApiBaseUrl();
+      const empRes = await fetchWithAuth(`${baseUrl}/employees`);
+      const logsRes = await fetchWithAuth(`${baseUrl}/logs`);
+      const payrollRes = await fetchWithAuth(`${baseUrl}/payroll`);
+      const otRes = await fetchWithAuth(`${baseUrl}/ot`);
+      const dailyPayrollRes = await fetchWithAuth(`${baseUrl}/daily-payroll`);
+      
+      if (empRes.ok) setEmployees(await empRes.json());
+      if (logsRes.ok) setActivityLogs(await logsRes.json());
+      if (payrollRes.ok) setPayrollHistory(await payrollRes.json());
+      if (otRes.ok) setOtHistory(await otRes.json());
+      if (dailyPayrollRes.ok) setDailyPayrollHistory(await dailyPayrollRes.json());
+    } catch (err) {
+      console.error('Failed to fetch data from backend', err);
+    }
+  }, []);
+
+  const setCustomApiBaseUrl = (url: string) => {
+    const cleanUrl = url.trim().replace(/\/+$/, '');
+    if (cleanUrl) {
+      localStorage.setItem('timberpro_api_url', cleanUrl);
+    } else {
+      localStorage.removeItem('timberpro_api_url');
+    }
+    setApiBaseUrlState(getApiBaseUrl());
+    refreshData();
+  };
+
+  const resetApiBaseUrl = () => {
+    localStorage.removeItem('timberpro_api_url');
+    setApiBaseUrlState(getApiBaseUrl());
+    refreshData();
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const empRes = await fetchWithAuth(`${API_URL}/employees`);
-        const logsRes = await fetchWithAuth(`${API_URL}/logs`);
-        const payrollRes = await fetchWithAuth(`${API_URL}/payroll`);
-        const otRes = await fetchWithAuth(`${API_URL}/ot`);
-        const dailyPayrollRes = await fetchWithAuth(`${API_URL}/daily-payroll`);
-        
-        if (empRes.ok) setEmployees(await empRes.json());
-        if (logsRes.ok) setActivityLogs(await logsRes.json());
-        if (payrollRes.ok) setPayrollHistory(await payrollRes.json());
-        if (otRes.ok) setOtHistory(await otRes.json());
-        if (dailyPayrollRes.ok) setDailyPayrollHistory(await dailyPayrollRes.json());
-      } catch (err) {
-        console.error('Failed to fetch initial data from Postgres', err);
-      }
-    };
-    
-    // Listen to auth state to trigger fetch
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
-        fetchData();
+        refreshData();
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [refreshData]);
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
@@ -226,6 +280,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const toastTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   const updateEmployeePayroll = async (id: string, basic: number, allowances: number, deductions: number) => {
     const original = employees.find(e => e.id === id);
@@ -241,7 +296,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     try {
-      const res = await fetchWithAuth(`${API_URL}/employees/${id}`, {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/employees/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ basicSalary: basic, allowances, deductions })
@@ -285,7 +340,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     try {
-      const res = await fetchWithAuth(`${API_URL}/employees/${id}`, {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/employees/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ otHours: hours, otAmountManual: manualAmount })
@@ -317,7 +372,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const target = payrollHistory.find(r => r.id === recordId);
     if (!target) return;
     try {
-      const res = await fetchWithAuth(`${API_URL}/payroll`, {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/payroll`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: recordId, status: 'Paid' })
@@ -341,7 +396,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const processSalary = async (record: PayrollRecord) => {
     try {
-      const res = await fetchWithAuth(`${API_URL}/payroll`, {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/payroll`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record)
@@ -369,7 +424,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const processOTRecord = async (record: OTRecord) => {
     try {
-      const res = await fetchWithAuth(`${API_URL}/ot`, {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/ot`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record)
@@ -390,6 +445,9 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         addToast('OT Approved Successfully', 'success');
         addActivityLog(record.employeeName, `OT approved by ${record.approvedBy}`, 'success');
         await updateEmployeeOT(record.employeeId, record.otHours, record.finalAmount);
+      } else if (record.status === 'Paid') {
+        addToast('OT Marked as Paid', 'success');
+        addActivityLog(record.employeeName, `OT marked as Paid`, 'success');
       }
     } catch (err: any) {
       console.error(err);
@@ -397,9 +455,9 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const saveDailyPayrollRecord = async (record: DailyPayrollRecord) => {
+  const saveDailyPayrollRecord = async (record: DailyPayrollRecord, suppressToast = false) => {
     try {
-      const res = await fetchWithAuth(`${API_URL}/daily-payroll`, {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/daily-payroll`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record)
@@ -418,7 +476,9 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     } catch (err: any) {
       console.error(err);
-      addToast(err.message || 'Server error. Failed to save daily payroll.', 'error');
+      if (!suppressToast) {
+        addToast(err.message || 'Server error. Failed to save daily payroll.', 'error');
+      }
       throw err;
     }
   };
@@ -426,130 +486,79 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const saveBulkDailyPayrollRecords = async (records: DailyPayrollRecord[]) => {
     try {
       for (const record of records) {
-        await saveDailyPayrollRecord(record);
+        await saveDailyPayrollRecord(record, true);
       }
       addToast(`Successfully saved ${records.length} payroll entries`, 'success');
     } catch (err: any) {
-      addToast('Error saving some bulk entries', 'error');
+      addToast(err.message || 'Error saving some bulk entries', 'error');
       throw err;
     }
   };
 
-  const processBiometricAttendance = async (employeeId: string, action: 'check-in' | 'check-out', timeStr: string) => {
+  const processBiometricAttendance = async (employeeId: string, mode: 'check-in' | 'check-out') => {
     const target = employees.find(e => e.id === employeeId);
     if (!target) return { success: false, error: 'Employee not found' };
 
-    const parseTime = (t: string) => {
-      if (!t || t === '--') return new Date();
-      const [time, modifier] = t.split(' ');
-      let [hours, minutes] = time.split(':');
-      if (hours === '12') hours = '00';
-      if (modifier === 'PM') hours = (parseInt(hours, 10) + 12).toString();
-      const date = new Date();
-      date.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-      return date;
-    };
+    try {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/attendance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId, mode })
+      });
 
-    if (action === 'check-in') {
-      if (target.status === 'Present' || target.status === 'Half Day') {
-        addActivityLog(target.name, `scanned but attendance already marked for today`, 'warning');
-        return { success: false, error: 'Employee already checked in today' };
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Server rejected biometric scan');
       }
 
-      const checkInDate = parseTime(timeStr);
-      const isLate = checkInDate.getHours() > 9 || (checkInDate.getHours() === 9 && checkInDate.getMinutes() > 30);
-      const newStatus = isLate ? 'Half Day' : 'Present';
-      const updatedPresentDays = target.presentDays + 1;
-      const updatedAbsentDays = Math.max(0, target.absentDays - 1);
-
-      try {
-        const res = await fetchWithAuth(`${API_URL}/employees/${employeeId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: newStatus,
-            checkIn: timeStr,
-            checkOut: '--',
-            verified: true,
-            presentDays: updatedPresentDays,
-            absentDays: updatedAbsentDays
-          })
-        });
-        if (!res.ok) {
-          throw new Error('Server rejected biometric check-in');
-        }
-        setEmployees((prev) => prev.map(emp => {
-          if (emp.id === employeeId) {
-            return {
-              ...emp,
-              status: newStatus,
-              checkIn: timeStr,
-              checkOut: '--',
-              verified: true,
-              presentDays: updatedPresentDays,
-              absentDays: updatedAbsentDays
-            };
-          }
-          return emp;
-        }));
-        addActivityLog(target.name, `checked in successfully`, 'success');
-        return { success: true };
-      } catch (err: any) {
-        console.error(err);
-        return { success: false, error: err.message || 'Database error during check-in' };
-      }
-    } else {
-      if (target.checkOut && target.checkOut !== '--') {
-        addActivityLog(target.name, `scanned but checkout already marked for today`, 'warning');
-        return { success: false, error: 'Employee already checked out today' };
-      }
-      if (target.status !== 'Present' && target.status !== 'Half Day') {
-        return { success: false, error: 'Employee has not checked in yet' };
-      }
-
-      const checkInDate = parseTime(target.checkIn);
-      const checkOutDate = parseTime(timeStr);
+      const result = await res.json();
       
-      let diffMs = checkOutDate.getTime() - checkInDate.getTime();
-      if (diffMs < 0) diffMs = 0;
-      
-      const hoursWorked = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10;
-      let otHours = 0;
-      if (hoursWorked > 9) {
-        otHours = Math.round((hoursWorked - 9) * 10) / 10;
+      if (!result.success) {
+        addActivityLog(target.name, `scanned but: ${result.error}`, 'warning');
+        return { success: false, error: result.error };
       }
-      const updatedOTHours = target.otHours + otHours;
 
-      try {
-        const res = await fetchWithAuth(`${API_URL}/employees/${employeeId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: 'Checked Out',
-            checkOut: timeStr,
-            otHours: updatedOTHours
-          })
-        });
-        if (!res.ok) {
-          throw new Error('Server rejected biometric check-out');
-        }
-        setEmployees((prev) => prev.map(emp => {
-          if (emp.id === employeeId) {
-            return {
-              ...emp,
-              status: 'Checked Out',
-              checkOut: timeStr,
-              otHours: updatedOTHours
-            };
-          }
-          return emp;
-        }));
-        addActivityLog(target.name, `checked out successfully`, 'success');
-        return { success: true, hoursWorked, otHours };
-      } catch (err: any) {
-        console.error(err);
-        return { success: false, error: err.message || 'Database error during check-out' };
-      }
+      // Update local employees cache with the returned updated employee object
+      setEmployees((prev) => prev.map(emp => emp.id === employeeId ? result.employee : emp));
+
+      const action = result.action; // 'check-in' or 'check-out'
+      const record = result.record;
+      const timeStr = action === 'check-in' ? record.checkIn : record.checkOut;
+
+      addActivityLog(target.name, `${action === 'check-in' ? 'checked in' : 'checked out'} successfully`, 'success');
+
+      return {
+        success: true,
+        action,
+        time: timeStr,
+        hoursWorked: record.hoursWorked,
+        otHours: record.otHours
+      };
+    } catch (err: any) {
+      console.error(err);
+      return { success: false, error: err.message || 'Database error during attendance' };
+    }
+  };
+
+  const getAttendanceByDate = async (date: string) => {
+    try {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/attendance?date=${date}`);
+      if (!res.ok) throw new Error('Failed to fetch attendance history');
+      return await res.json();
+    } catch (err) {
+      console.error(err);
+      return [];
+    }
+  };
+
+  const getAttendanceByMonth = async (month: string) => {
+    try {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/attendance?month=${month}`);
+      if (!res.ok) throw new Error('Failed to fetch monthly attendance history');
+      return await res.json();
+    } catch (err) {
+      console.error(err);
+      return [];
     }
   };
 
@@ -564,7 +573,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
     setActivityLogs(prev => [newLog, ...prev.slice(0, 49)]);
 
-    fetchWithAuth(`${API_URL}/logs`, {
+    fetchWithAuth(`${getApiBaseUrl()}/logs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newLog)
@@ -573,12 +582,12 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const markAllLogsRead = () => {
     setActivityLogs(prev => prev.map(log => ({ ...log, read: true })));
-    fetchWithAuth(`${API_URL}/logs/read-all`, { method: 'PUT' }).catch(console.error);
+    fetchWithAuth(`${getApiBaseUrl()}/logs/read-all`, { method: 'PUT' }).catch(console.error);
   };
 
   const clearLogs = () => {
     setActivityLogs([]);
-    fetchWithAuth(`${API_URL}/logs`, { method: 'DELETE' }).catch(console.error);
+    fetchWithAuth(`${getApiBaseUrl()}/logs`, { method: 'DELETE' }).catch(console.error);
   };
 
   const addEmployee = async (empData: any) => {
@@ -623,7 +632,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     try {
-      const res = await fetchWithAuth(`${API_URL}/employees`, {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/employees`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEmp)
@@ -655,7 +664,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     try {
-      const res = await fetchWithAuth(`${API_URL}/employees/${id}`, {
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/employees/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -678,12 +687,18 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const deleteEmployee = async (id: string) => {
     const target = employees.find(e => e.id === id);
     try {
-      const res = await fetchWithAuth(`${API_URL}/employees/${id}`, { method: 'DELETE' });
+      const res = await fetchWithAuth(`${getApiBaseUrl()}/employees/${id}?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || 'Server error deleting employee');
       }
+      // WEAK-4: Remove employee from main list
       setEmployees(prev => prev.filter(emp => emp.id !== id));
+      // WEAK-4: Immediately purge all related history from React state so stale
+      // records are not visible in Payroll/OT/Daily tabs without a page refresh
+      setPayrollHistory(prev => prev.filter(r => r.employeeId !== id));
+      setOtHistory(prev => prev.filter(r => r.employeeId !== id));
+      setDailyPayrollHistory(prev => prev.filter(r => r.employeeId !== id));
       addToast('Employee removed successfully', 'success');
       if (target) {
         addActivityLog(target.name, 'removed from directory', 'warning');
@@ -695,17 +710,42 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const addToast = (message: string, type: ToastMessage['type']) => {
-    const id = Date.now().toString() + Math.random().toString();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      removeToast(id);
-    }, 3000);
-  };
-
-  const removeToast = (id: string) => {
+  const removeToast = useCallback((id: string) => {
+    const timer = toastTimersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimersRef.current.delete(id);
+    }
     setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  }, []);
+
+  const addToast = useCallback((message: string, type: ToastMessage['type'] = 'info', customId?: string): string => {
+    if (!message || !message.trim()) return '';
+    const id = customId || (`toast_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`);
+    
+    setToasts(prev => {
+      // Deduplicate: if the exact same message and type already exists, do not create a duplicate
+      const existing = prev.find(t => t.id === id || (t.message === message && t.type === type));
+      if (existing) {
+        // Reset timer for existing toast
+        const oldTimer = toastTimersRef.current.get(existing.id);
+        if (oldTimer) clearTimeout(oldTimer);
+        const timer = setTimeout(() => {
+          removeToast(existing.id);
+        }, 4000);
+        toastTimersRef.current.set(existing.id, timer);
+        return prev;
+      }
+      return [...prev, { id, message, type }];
+    });
+
+    const timer = setTimeout(() => {
+      removeToast(id);
+    }, 4000);
+    toastTimersRef.current.set(id, timer);
+
+    return id;
+  }, [removeToast]);
 
   const logout = async () => {
     try {
@@ -810,6 +850,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     isAuthenticated,
     managerProfile,
     authLoading,
+    searchQuery,
+    setSearchQuery,
     login,
     signup,
     resetPassword,
@@ -824,6 +866,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     updateEmployeePayroll,
     updateEmployeeOT,
     processBiometricAttendance,
+    getAttendanceByDate,
+    getAttendanceByMonth,
     processSalary,
     processOTRecord,
     markSalaryPaid,
@@ -831,7 +875,11 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     saveBulkDailyPayrollRecords,
     markAllLogsRead,
     clearLogs,
-  }), [employees, activityLogs, payrollHistory, otHistory, dailyPayrollHistory, toasts, isAuthenticated, managerProfile, authLoading]);
+    apiBaseUrl: apiBaseUrlState,
+    setCustomApiBaseUrl,
+    resetApiBaseUrl,
+    refreshData,
+  }), [employees, activityLogs, payrollHistory, otHistory, dailyPayrollHistory, toasts, isAuthenticated, managerProfile, authLoading, searchQuery, apiBaseUrlState, refreshData]);
 
   return (
     <AppContext.Provider value={contextValue}>

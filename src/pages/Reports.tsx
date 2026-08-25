@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Search, FileDown, Download, Award, ShieldAlert, BarChart3, Filter, IndianRupee } from 'lucide-react';
 import { jsPDF } from "jspdf";
@@ -7,7 +7,7 @@ import reportsBg from '../assets/dashboard-backgrounds/reports-bg.webp';
 import './Reports.css';
 
 export default function Reports() {
-  const { employees, dailyPayrollHistory, otHistory, addToast } = useApp();
+  const { employees, dailyPayrollHistory, otHistory, payrollHistory, getAttendanceByMonth, addToast } = useApp();
   const [selectedDept, setSelectedDept] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -15,6 +15,23 @@ export default function Reports() {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   });
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null);
+
+  // Dynamic monthly attendance records
+  const [monthlyAttendance, setMonthlyAttendance] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    getAttendanceByMonth(selectedMonth).then(data => {
+      if (active) {
+        setMonthlyAttendance(data);
+      }
+    }).catch(err => {
+      console.error("Reports page failed to fetch attendance logs:", err);
+    });
+    return () => {
+      active = false;
+    };
+  }, [selectedMonth, getAttendanceByMonth]);
 
   // Extract unique departments dynamically
   const departments = ['All', ...Array.from(new Set(employees.map(e => e.department)))];
@@ -38,12 +55,34 @@ export default function Reports() {
       const records = dailyPayrollHistory.filter(r => r.employeeId === emp.id && r.date.startsWith(selectedMonth));
       const otRecords = (otHistory || []).filter(r => r.employeeId === emp.id && r.month === currentMonthName && (r.status === 'Approved' || r.status === 'Paid'));
       
-      const daysWorked = records.length;
+      // Authoritative count of days worked from AttendanceRecord logs
+      const empAttendance = monthlyAttendance.filter(r => 
+        r.employeeId === emp.id && (r.status === 'Present' || r.status === 'Half Day')
+      );
+      const daysWorked = empAttendance.length;
+
       const totalDailyWage = records.reduce((sum, r) => sum + r.dailyWage, 0);
       const totalBonus = records.reduce((sum, r) => sum + r.bonus, 0);
       const totalDeduction = records.reduce((sum, r) => sum + r.deduction, 0);
       const totalOT = otRecords.reduce((sum, r) => sum + r.finalAmount, 0);
-      const netPay = records.reduce((sum, r) => sum + r.finalAmount, 0) + totalOT;
+      
+      // Worked wages final amount
+      const workedWages = records.reduce((sum, r) => sum + r.finalAmount, 0);
+      
+      const basicSalary = emp.basicSalary || 0;
+      const allowances = emp.allowances || 0;
+      const deductions = emp.deductions || 0;
+
+      // Net Pay alignment: check if there is an Approved/Paid Closed PayrollRecord
+      const closedRecord = payrollHistory.find(r => 
+        r.employeeId === emp.id && 
+        r.month === currentMonthName && 
+        (r.status === 'Approved' || r.status === 'Paid')
+      );
+
+      const netPay = closedRecord 
+        ? closedRecord.netPay 
+        : (workedWages + basicSalary + allowances + totalOT - deductions);
 
       return {
         ...emp,
@@ -55,7 +94,7 @@ export default function Reports() {
         netPay
       };
     });
-  }, [filteredEmployees, dailyPayrollHistory, otHistory, selectedMonth]);
+  }, [filteredEmployees, dailyPayrollHistory, otHistory, payrollHistory, monthlyAttendance, selectedMonth]);
 
   // Calculate high-level aggregates across filtered list
   const activeStaff = reportData.filter(e => e.daysWorked > 0).length;
@@ -185,7 +224,7 @@ export default function Reports() {
         {/* Export Buttons */}
         <div className="export-actions">
           <button 
-            className="btn-outline" 
+            className="btn-report-action" 
             disabled={exporting !== null}
             onClick={() => triggerExport('excel')}
           >
@@ -193,7 +232,7 @@ export default function Reports() {
             {exporting === 'excel' ? 'Generating Sheet...' : 'Export Excel'}
           </button>
           <button 
-            className="btn-primary" 
+            className="btn-report-action" 
             disabled={exporting !== null}
             onClick={() => triggerExport('pdf')}
           >

@@ -15,6 +15,7 @@ export default function Login() {
   const [fullName, setFullName] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isEmailLoading, setIsEmailLoading] = useState(false);
 
   useEffect(() => {
@@ -194,13 +195,13 @@ export default function Login() {
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           disabled={isEmailLoading || isGoogleLoading}
-                          style={{ letterSpacing: showPassword ? 'normal' : '0.125rem' }}
+                          autoComplete="current-password"
                         />
                         <button 
                           type="button" 
-                          onClick={() => setShowPassword(!showPassword)}
+                          onClick={() => setShowPassword((prev) => !prev)}
                           className="password-toggle-btn"
-                          tabIndex={-1}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
                         >
                           {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
@@ -213,14 +214,22 @@ export default function Login() {
                         <div className="input-with-icon">
                           <Lock size={18} className="input-icon" />
                           <input 
-                            type={showPassword ? 'text' : 'password'} 
+                            type={showConfirmPassword ? 'text' : 'password'} 
                             placeholder="••••••••" 
                             required 
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             disabled={isEmailLoading || isGoogleLoading}
-                            style={{ letterSpacing: showPassword ? 'normal' : '0.125rem' }}
+                            autoComplete="new-password"
                           />
+                          <button 
+                            type="button" 
+                            onClick={() => setShowConfirmPassword((prev) => !prev)}
+                            className="password-toggle-btn"
+                            aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                          >
+                            {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
                         </div>
                       </div>
                     )}

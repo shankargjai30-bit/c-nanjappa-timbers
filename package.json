@@ -5,12 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\" \"node server/index.js\"",
-    "build": "tsc -b && vite build",
+    "build": "prisma generate && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "node server/index.js"
+    "start": "node server/index.js",
+    "server": "node server/index.js",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "@prisma/client": "^5.22.0",
     "cloudinary": "^2.10.0",
     "cors": "^2.8.6",

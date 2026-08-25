@@ -13,8 +13,8 @@ dist-ssr
 *.local
 
 # Environment variables (secrets - never commit these)
-# .env
-# .env.*
+.env
+.env.*
 !.env.example
 
 # Firebase service account credentials (contains private keys - never commit)
@@ -35,3 +35,17 @@ server/firebase-service-account.json
 # QA reports
 backend-qa-report.json
 frontend-qa-report.json
+
+# Local uploads
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Android build artifacts & local properties
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/app/*.iml
+

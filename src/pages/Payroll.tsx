@@ -1,38 +1,124 @@
-import { useState, useMemo } from 'react';
-import { useApp, type DailyPayrollRecord } from '../context/AppContext';
-import { Search, Save, Calendar, History, TrendingUp, CheckCircle } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { useApp, type DailyPayrollRecord, type PayrollRecord } from '../context/AppContext';
+import { Search, Save, Calendar, History, TrendingUp, CheckCircle, Lock, Wallet, Clock, Check } from 'lucide-react';
 import payrollBg from '../assets/dashboard-backgrounds/payroll-bg.webp';
 import './Payroll.css';
 
 export default function Payroll() {
-  const { employees, dailyPayrollHistory, saveBulkDailyPayrollRecords, managerProfile, addToast } = useApp();
+  const { 
+    employees, 
+    dailyPayrollHistory, 
+    saveBulkDailyPayrollRecords, 
+    managerProfile, 
+    addToast, 
+    getAttendanceByDate,
+    payrollHistory,
+    otHistory,
+    processSalary,
+    markSalaryPaid,
+    getAttendanceByMonth,
+    searchQuery,
+    setSearchQuery
+  } = useApp();
   
   const [activeTab, setActiveTab] = useState<'daily' | 'history' | 'monthly'>('daily');
-  
-  // Date state for Daily Entry
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  });
-  const [searchQuery, setSearchQuery] = useState('');
 
-  // Daily Entry state (Bulk edit)
-  const [entryData, setEntryData] = useState<Record<string, Partial<DailyPayrollRecord>>>({});
+  // Date state for Daily Entry (Asia/Kolkata IST)
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const options = { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
+    const formatter = new Intl.DateTimeFormat('en-CA', options);
+    return formatter.format(new Date());
+  });
 
   // History filters
   const [historyEmployeeFilter, setHistoryEmployeeFilter] = useState('');
   const [historyMonthFilter, setHistoryMonthFilter] = useState(() => {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const options = { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' } as const;
+    const formatter = new Intl.DateTimeFormat('en-CA', options);
+    return formatter.format(new Date());
   });
 
-  // Calculate Present Employees for the selected date
-  // In a real app, attendance history is fetched per date. Here we assume current 'status' implies today's status.
+  const getFriendlyMonth = (monthStr: string) => {
+    if (!monthStr || !monthStr.includes('-')) return '';
+    const [year, monthNum] = monthStr.split('-');
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    return `${monthNames[parseInt(monthNum, 10) - 1]} ${year}`;
+  };
+
+  const selectedDateMonth = useMemo(() => {
+    const monthStr = selectedDate.substring(0, 7); // YYYY-MM
+    return getFriendlyMonth(monthStr);
+  }, [selectedDate]);
+
+  const isEmployeeLocked = (employeeId: string) => {
+    const record = payrollHistory.find(r => r.employeeId === employeeId && r.month === selectedDateMonth);
+    return record && (record.status === 'Approved' || record.status === 'Paid');
+  };
+
+  const [monthlyAttendance, setMonthlyAttendance] = useState<any[]>([]);
+  const [loadingMonthlySummary, setLoadingMonthlySummary] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (activeTab === 'monthly') {
+      setLoadingMonthlySummary(true);
+      getAttendanceByMonth(historyMonthFilter).then(data => {
+        if (active) {
+          setMonthlyAttendance(data);
+          setLoadingMonthlySummary(false);
+        }
+      }).catch(err => {
+        console.error(err);
+        if (active) setLoadingMonthlySummary(false);
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [historyMonthFilter, activeTab, getAttendanceByMonth]);
+
+  // Daily Entry state (Bulk edit)
+  const [entryData, setEntryData] = useState<Record<string, Partial<DailyPayrollRecord>>>({});
+
+  // Attendance records state for selected date
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingAttendance(true);
+    getAttendanceByDate(selectedDate).then(data => {
+      if (active) {
+        setAttendanceRecords(data);
+        setLoadingAttendance(false);
+      }
+    }).catch(err => {
+      console.error(err);
+      if (active) setLoadingAttendance(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [selectedDate, getAttendanceByDate]);
+
+  // Calculate Present Employees for the selected date from authoritative AttendanceRecords
   const presentEmployees = useMemo(() => {
-    return employees.filter(e => 
-      e.status === 'Present' || e.status === 'Half Day'
+    const activeRecords = attendanceRecords.filter(r => 
+      r.status === 'Present' || r.status === 'Half Day'
     );
-  }, [employees]);
+    
+    return activeRecords.map(r => {
+      const emp = employees.find(e => e.id === r.employeeId);
+      return {
+        id: r.employeeId,
+        name: emp?.name || (r.employee && r.employee.name) || 'Unknown',
+        department: emp?.department || (r.employee && r.employee.department) || '',
+        role: emp?.role || (r.employee && r.employee.role) || '',
+        avatarColor: emp?.avatarColor || (r.employee && r.employee.avatarColor) || 'var(--primary-light)',
+        status: r.status
+      };
+    });
+  }, [attendanceRecords, employees]);
 
   const filteredPresentEmployees = useMemo(() => {
     return presentEmployees.filter(e => 
@@ -74,6 +160,7 @@ export default function Payroll() {
     let hasInvalidData = false;
     
     for (const emp of filteredPresentEmployees) {
+      if (isEmployeeLocked(emp.id)) continue;
       const data = entryData[emp.id];
       if (!data) continue;
 
@@ -128,7 +215,7 @@ export default function Payroll() {
       setEntryData({}); // clear after save
       // Success toast is handled in saveBulkDailyPayrollRecords
     } catch (err) {
-      addToast('Save failed. Please try again.', 'error');
+      console.error('Save failed:', err);
     } finally {
       setIsSaving(false);
     }
@@ -161,29 +248,124 @@ export default function Payroll() {
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [dailyPayrollHistory, historyEmployeeFilter, historyMonthFilter, searchQuery, employees]);
 
-  // MONTHLY SUMMARY LOGIC
+  const currentMonthName = useMemo(() => getFriendlyMonth(historyMonthFilter), [historyMonthFilter]);
+
+  // MONTHLY SUMMARY & APPROVAL LOGIC
   const monthlySummary = useMemo(() => {
-    const summary: Record<string, { daysWorked: number, totalEarnings: number, totalBonus: number, totalDeduction: number, netPay: number, name: string, dept: string }> = {};
-    
-    const targetMonth = historyMonthFilter || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-    
-    dailyPayrollHistory.filter(r => r.date.startsWith(targetMonth)).forEach(r => {
-      if (!summary[r.employeeId]) {
-        const emp = employees.find(e => e.id === r.employeeId);
-        summary[r.employeeId] = {
-          daysWorked: 0, totalEarnings: 0, totalBonus: 0, totalDeduction: 0, netPay: 0,
-          name: emp?.name || 'Unknown', dept: emp?.department || ''
-        };
-      }
-      summary[r.employeeId].daysWorked += 1;
-      summary[r.employeeId].totalEarnings += r.dailyWage;
-      summary[r.employeeId].totalBonus += r.bonus;
-      summary[r.employeeId].totalDeduction += r.deduction;
-      summary[r.employeeId].netPay += r.finalAmount;
-    });
-    
-    return Object.entries(summary).map(([id, data]) => ({ id, ...data }));
-  }, [dailyPayrollHistory, historyMonthFilter, employees]);
+    return employees.map(emp => {
+      // 1. Get daily wages for selected month
+      const empDailyWages = dailyPayrollHistory.filter(r => 
+        r.employeeId === emp.id && r.date.startsWith(historyMonthFilter)
+      );
+      const totalBonus = empDailyWages.reduce((sum, r) => sum + r.bonus, 0);
+      const totalDeduction = empDailyWages.reduce((sum, r) => sum + r.deduction, 0);
+      const workedWages = empDailyWages.reduce((sum, r) => sum + r.finalAmount, 0);
+
+      // 2. Count presentDays from AttendanceRecord for this month
+      const empAttendance = monthlyAttendance.filter(r => 
+        r.employeeId === emp.id && (r.status === 'Present' || r.status === 'Half Day')
+      );
+      const presentDays = empAttendance.length;
+
+      // 3. Get OT payout from otHistory
+      const otRecord = otHistory.find(r => 
+        r.employeeId === emp.id && 
+        r.month === currentMonthName && 
+        (r.status === 'Approved' || r.status === 'Paid')
+      );
+      const otHours = otRecord ? otRecord.otHours : 0;
+      const otAmount = otRecord ? otRecord.finalAmount : 0;
+
+      // 4. Base rates
+      const basicSalary = emp.basicSalary || 0;
+      const allowances = emp.allowances || 0;
+      const deductions = emp.deductions || 0;
+
+      // 5. Net Pay calculation: workedWages (piece rate daily payroll) + basicSalary + allowances + otAmount - deductions
+      const netPay = workedWages + basicSalary + allowances + otAmount - deductions;
+
+      // 6. Existing Payroll status
+      const existingPayroll = payrollHistory.find(r => 
+        r.employeeId === emp.id && r.month === currentMonthName
+      );
+      const status = existingPayroll ? existingPayroll.status : 'Unsaved';
+
+      return {
+        id: emp.id,
+        name: emp.name,
+        dept: emp.department,
+        role: emp.role || '',
+        avatarColor: emp.avatarColor || 'var(--primary-light)',
+        basicSalary,
+        allowances,
+        deductions,
+        otHours,
+        otAmount,
+        presentDays,
+        workedWages,
+        totalBonus,
+        totalDeduction,
+        netPay,
+        status,
+        existingRecord: existingPayroll
+      };
+    }).filter(row => 
+      row.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      row.id.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [employees, dailyPayrollHistory, monthlyAttendance, otHistory, payrollHistory, currentMonthName, historyMonthFilter, searchQuery]);
+
+  // Approval Handlers
+  const handleSaveDraft = async (row: any) => {
+    const recordPayload: PayrollRecord = {
+      id: `PR_${row.id}_${historyMonthFilter}`,
+      employeeId: row.id,
+      employeeName: row.name,
+      department: row.dept,
+      role: row.role || '',
+      avatarColor: row.avatarColor || '',
+      month: currentMonthName,
+      basicSalary: row.basicSalary,
+      otHours: row.otHours,
+      otAmount: row.otAmount,
+      allowances: row.allowances,
+      deductions: row.deductions,
+      netPay: row.netPay,
+      status: 'Draft',
+      presentDays: row.presentDays,
+      totalWorkingDays: 26
+    };
+    await processSalary(recordPayload);
+    addToast(`Saved draft payroll for ${row.name}`, 'success');
+  };
+
+  const handleApprove = async (row: any) => {
+    const recordPayload: PayrollRecord = {
+      id: `PR_${row.id}_${historyMonthFilter}`,
+      employeeId: row.id,
+      employeeName: row.name,
+      department: row.dept,
+      role: row.role || '',
+      avatarColor: row.avatarColor || '',
+      month: currentMonthName,
+      basicSalary: row.basicSalary,
+      otHours: row.otHours,
+      otAmount: row.otAmount,
+      allowances: row.allowances,
+      deductions: row.deductions,
+      netPay: row.netPay,
+      status: 'Approved',
+      presentDays: row.presentDays,
+      totalWorkingDays: 26,
+      approvedBy: managerProfile?.displayName || 'Manager',
+      approvalTime: new Date().toISOString()
+    };
+    await processSalary(recordPayload);
+  };
+
+  const handleMarkPaid = async (row: any) => {
+    await markSalaryPaid(`PR_${row.id}_${historyMonthFilter}`);
+  };
 
 
   return (
@@ -224,29 +406,18 @@ export default function Payroll() {
 
         {activeTab === 'daily' && (
           <div className="table-card card-erp">
-            <div className="flex items-center gap-4 flex-wrap mb-6">
-              <div className="search-box-erp relative" style={{ width: '320px', height: '44px' }}>
-                <Search size={18} className="search-icon absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                <input 
-                  type="text" 
-                  placeholder="Search employees..." 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ width: '100%', height: '100%', paddingLeft: '2.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}
-                />
-              </div>
+            <div className="payroll-toolbar">
               <input 
                 type="date" 
                 className="date-picker-erp"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                style={{ height: '44px', padding: '0 1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}
               />
               <button 
-                className="btn-primary" 
+                type="button"
+                className="btn-save-erp" 
                 onClick={saveAllEntries}
                 disabled={isSaving}
-                style={{ height: '44px', display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}
               >
                 <Save size={18} />
                 {isSaving ? 'Saving...' : 'Save All Entries'}
@@ -269,104 +440,116 @@ export default function Payroll() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPresentEmployees.map((emp) => {
-                    const record = getRecordForDisplay(emp.id);
-                    const saved = isAlreadySaved(emp.id);
-                    return (
-                      <tr key={emp.id} className={saved ? 'row-saved' : ''}>
-                        <td>
-                          <div className="employee-cell">
-                            <div className="employee-avatar" style={{ backgroundColor: emp.avatarColor || 'var(--primary-light)' }}>
-                              {emp.name.charAt(0)}
-                            </div>
-                            <div className="employee-details">
-                              <span className="employee-name font-semibold">{emp.name}</span>
-                              <span className="employee-role text-sm text-gray-500">{emp.id}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <span className="status-pill active">{emp.status}</span>
-                        </td>
-                        <td>
-                          <input 
-                            type="number"
-                            min="0"
-                            max="99999"
-                            className="payroll-input-erp" 
-                            placeholder="Qty"
-                            value={record.timberQuantity ?? ''}
-                            onChange={(e) => handleEntryChange(emp.id, 'timberQuantity', e.target.value)}
-                            disabled={saved}
-                          />
-                        </td>
-                        <td>
-                          <input 
-                            type="number"
-                            min="0"
-                            max="99999"
-                            className="payroll-input-erp" 
-                            placeholder="Rate"
-                            value={record.ratePerUnit ?? ''}
-                            onChange={(e) => handleEntryChange(emp.id, 'ratePerUnit', e.target.value)}
-                            disabled={saved}
-                          />
-                        </td>
-                        <td>
-                          <input 
-                            type="number"
-                            min="0"
-                            max="99999"
-                            className="payroll-input-erp" 
-                            placeholder="Wage"
-                            value={record.dailyWage}
-                            onChange={(e) => handleEntryChange(emp.id, 'dailyWage', e.target.value)}
-                            disabled={saved}
-                          />
-                        </td>
-                        <td>
-                          <input 
-                            type="number"
-                            min="0"
-                            max="999999"
-                            className="payroll-input-erp text-success" 
-                            placeholder="Bonus"
-                            value={record.bonus}
-                            onChange={(e) => handleEntryChange(emp.id, 'bonus', e.target.value)}
-                            disabled={saved}
-                          />
-                        </td>
-                        <td>
-                          <input 
-                            type="number"
-                            min="0"
-                            max="999999"
-                            className="payroll-input-erp text-danger" 
-                            placeholder="Deduct"
-                            value={record.deduction}
-                            onChange={(e) => handleEntryChange(emp.id, 'deduction', e.target.value)}
-                            disabled={saved}
-                          />
-                        </td>
-                        <td>
-                          <strong>₹{Number(record.finalAmount || 0).toLocaleString('en-IN')}</strong>
-                        </td>
-                        <td>
-                          {saved ? (
-                            <span className="text-success flex items-center gap-1"><CheckCircle size={16} /> Saved</span>
-                          ) : (
-                            <span className="text-muted text-sm">Pending</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {filteredPresentEmployees.length === 0 && (
+                  {loadingAttendance ? (
                     <tr>
                       <td colSpan={9} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                        No employees present on this date matching the criteria.
+                        Loading attendance records for {selectedDate}...
                       </td>
                     </tr>
+                  ) : (
+                    <>
+                      {filteredPresentEmployees.map((emp) => {
+                        const record = getRecordForDisplay(emp.id);
+                        const saved = isAlreadySaved(emp.id);
+                        return (
+                          <tr key={emp.id} className={saved ? 'row-saved' : ''}>
+                            <td>
+                              <div className="employee-cell">
+                                <div className="employee-avatar" style={{ backgroundColor: emp.avatarColor || 'var(--primary-light)' }}>
+                                  {emp.name.charAt(0)}
+                                </div>
+                                <div className="employee-details">
+                                  <span className="employee-name font-semibold">{emp.name}</span>
+                                  <span className="employee-role text-sm text-gray-500">{emp.id}</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <span className="status-pill active">{emp.status}</span>
+                            </td>
+                            <td>
+                              <input 
+                                type="number"
+                                min="0"
+                                max="99999"
+                                className="payroll-input-erp" 
+                                placeholder="Qty"
+                                value={record.timberQuantity ?? ''}
+                                onChange={(e) => handleEntryChange(emp.id, 'timberQuantity', e.target.value)}
+                                disabled={saved || isEmployeeLocked(emp.id)}
+                              />
+                            </td>
+                            <td>
+                              <input 
+                                type="number"
+                                min="0"
+                                max="99999"
+                                className="payroll-input-erp" 
+                                placeholder="Rate"
+                                value={record.ratePerUnit ?? ''}
+                                onChange={(e) => handleEntryChange(emp.id, 'ratePerUnit', e.target.value)}
+                                disabled={saved || isEmployeeLocked(emp.id)}
+                              />
+                            </td>
+                            <td>
+                              <input 
+                                type="number"
+                                min="0"
+                                max="99999"
+                                className="payroll-input-erp" 
+                                placeholder="Wage"
+                                value={record.dailyWage}
+                                onChange={(e) => handleEntryChange(emp.id, 'dailyWage', e.target.value)}
+                                disabled={saved || isEmployeeLocked(emp.id)}
+                              />
+                            </td>
+                            <td>
+                              <input 
+                                type="number"
+                                min="0"
+                                max="999999"
+                                className="payroll-input-erp text-success" 
+                                placeholder="Bonus"
+                                value={record.bonus}
+                                onChange={(e) => handleEntryChange(emp.id, 'bonus', e.target.value)}
+                                disabled={saved || isEmployeeLocked(emp.id)}
+                              />
+                            </td>
+                            <td>
+                              <input 
+                                type="number"
+                                min="0"
+                                max="999999"
+                                className="payroll-input-erp text-danger" 
+                                placeholder="Deduct"
+                                value={record.deduction}
+                                onChange={(e) => handleEntryChange(emp.id, 'deduction', e.target.value)}
+                                disabled={saved || isEmployeeLocked(emp.id)}
+                              />
+                            </td>
+                            <td>
+                              <strong>₹{Number(record.finalAmount || 0).toLocaleString('en-IN')}</strong>
+                            </td>
+                            <td>
+                              {isEmployeeLocked(emp.id) ? (
+                                <span className="text-danger flex items-center gap-1"><Lock size={16} /> Locked</span>
+                              ) : saved ? (
+                                <span className="text-success flex items-center gap-1"><CheckCircle size={16} /> Saved</span>
+                              ) : (
+                                <span className="text-muted text-sm">Pending</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {filteredPresentEmployees.length === 0 && (
+                        <tr>
+                          <td colSpan={9} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                            No employees present on this date matching the criteria.
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   )}
                 </tbody>
               </table>
@@ -477,39 +660,125 @@ export default function Payroll() {
                     <th>Employee</th>
                     <th>Dept</th>
                     <th>Days Worked</th>
-                    <th>Total Base Earnings</th>
-                    <th>Total Bonus</th>
-                    <th>Total Deductions</th>
+                    <th>Wages / Basic</th>
+                    <th>OT Pay</th>
+                    <th>Allow. / Deduct.</th>
                     <th>Net Monthly Pay</th>
+                    <th>Status</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {monthlySummary.map(row => (
-                    <tr key={row.id}>
-                      <td>
-                        <div className="employee-details">
-                          <span className="employee-name">{row.name}</span>
-                          <span className="employee-role">{row.id}</span>
-                        </div>
-                      </td>
-                      <td>{row.dept}</td>
-                      <td><strong>{row.daysWorked} days</strong></td>
-                      <td>₹{row.totalEarnings.toLocaleString('en-IN')}</td>
-                      <td className="text-success">₹{row.totalBonus.toLocaleString('en-IN')}</td>
-                      <td className="text-danger">₹{row.totalDeduction.toLocaleString('en-IN')}</td>
-                      <td>
-                        <strong className="text-primary" style={{ fontSize: '1.1rem' }}>
-                          ₹{row.netPay.toLocaleString('en-IN')}
-                        </strong>
-                      </td>
-                    </tr>
-                  ))}
-                  {monthlySummary.length === 0 && (
+                  {loadingMonthlySummary ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '3rem' }}>
-                        No records found for this month.
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                        Loading monthly summaries...
                       </td>
                     </tr>
+                  ) : (
+                    <>
+                      {monthlySummary.map(row => (
+                        <tr key={row.id}>
+                          <td>
+                            <div className="employee-cell">
+                              <div className="employee-avatar" style={{ backgroundColor: row.avatarColor }}>
+                                {row.name.charAt(0)}
+                              </div>
+                              <div className="employee-details">
+                                <span className="employee-name font-semibold">{row.name}</span>
+                                <span className="employee-role text-sm text-gray-500">{row.id}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td>{row.dept}</td>
+                          <td><strong>{row.presentDays} days</strong></td>
+                          <td>
+                            <div className="flex flex-col">
+                              <span>Wages: ₹{row.workedWages.toLocaleString('en-IN')}</span>
+                              <span className="text-xs text-gray-500">Basic: ₹{row.basicSalary.toLocaleString('en-IN')}</span>
+                            </div>
+                          </td>
+                          <td className="text-success">
+                            <div className="flex flex-col">
+                              <span>₹{row.otAmount.toLocaleString('en-IN')}</span>
+                              <span className="text-xs text-gray-400">({row.otHours} hrs)</span>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="flex flex-col">
+                              <span className="text-success">Allow: +₹{row.allowances.toLocaleString('en-IN')}</span>
+                              <span className="text-danger">Deduct: -₹{row.deductions.toLocaleString('en-IN')}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <strong className="text-primary" style={{ fontSize: '1.1rem' }}>
+                              ₹{row.netPay.toLocaleString('en-IN')}
+                            </strong>
+                          </td>
+                          <td>
+                            <span className={`status-pill ${
+                              row.status === 'Paid' ? 'success' :
+                              row.status === 'Approved' ? 'primary' :
+                              row.status === 'Draft' ? 'warning' : 'info'
+                            }`}>
+                              {row.status === 'Paid' && <CheckCircle size={12} style={{ marginRight: '0.25rem' }} />}
+                              {row.status === 'Approved' && <Check size={12} style={{ marginRight: '0.25rem' }} />}
+                              {row.status === 'Draft' && <Clock size={12} style={{ marginRight: '0.25rem' }} />}
+                              {row.status}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="action-buttons-group">
+                              {row.status === 'Unsaved' && (
+                                <button 
+                                  className="btn-icon-action btn-edit" 
+                                  title="Save Draft Payroll"
+                                  onClick={() => handleSaveDraft(row)}
+                                  style={{ padding: '0.25rem 0.5rem', height: '30px', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                >
+                                  <Save size={14} />
+                                  <span style={{ fontSize: '0.75rem' }}>Draft</span>
+                                </button>
+                              )}
+                              {row.status === 'Draft' && (
+                                <button 
+                                  className="btn-icon-action btn-approve" 
+                                  title="Approve Payroll"
+                                  onClick={() => handleApprove(row)}
+                                  style={{ padding: '0.25rem 0.5rem', height: '30px', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                >
+                                  <Check size={14} />
+                                  <span style={{ fontSize: '0.75rem' }}>Approve</span>
+                                </button>
+                              )}
+                              {row.status === 'Approved' && (
+                                <button 
+                                  className="btn-icon-action btn-approve" 
+                                  title="Mark as Paid"
+                                  onClick={() => handleMarkPaid(row)}
+                                  style={{ padding: '0.25rem 0.5rem', height: '30px', display: 'flex', alignItems: 'center', gap: '0.25rem', backgroundColor: 'var(--success-light)', color: 'var(--success)' }}
+                                >
+                                  <Wallet size={14} />
+                                  <span style={{ fontSize: '0.75rem' }}>Pay</span>
+                                </button>
+                              )}
+                              {row.status === 'Paid' && (
+                                <span className="text-success flex items-center gap-1" style={{ fontSize: '0.85rem', fontWeight: '600' }}>
+                                  <CheckCircle size={16} /> Paid
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {monthlySummary.length === 0 && (
+                        <tr>
+                          <td colSpan={9} style={{ textAlign: 'center', padding: '3rem' }}>
+                            No employees found.
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   )}
                 </tbody>
               </table>

@@ -1,14 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useApp, type Employee, type OTRecord } from '../context/AppContext';
-import { Search, Clock, ShieldCheck, Edit, Landmark, X, IndianRupee, Flame, Calendar, History, Check, Wallet, CheckCircle } from 'lucide-react';
+import { Search, Clock, ShieldCheck, Edit, Landmark, X, IndianRupee, Flame, Calendar, History, Check, Wallet, CheckCircle, Lock } from 'lucide-react';
 import otBg from '../assets/dashboard-backgrounds/ot-bg.webp';
 import './OTManagement.css';
 
-const CURRENT_MONTH = "May 2026";
 const DEFAULT_OT_RATE = 166.67; // 500 / 3
 
 export default function OTManagement() {
-  const { employees, otHistory, processOTRecord, addToast } = useApp();
+  const { employees, otHistory, processOTRecord, addToast, getAttendanceByMonth, payrollHistory } = useApp();
   
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,14 +28,46 @@ export default function OTManagement() {
   const [approvalRecord, setApprovalRecord] = useState<OTRecord | null>(null);
   const [paymentRecord, setPaymentRecord] = useState<OTRecord | null>(null);
 
-  // Helper to generate current month's draft OT record
+  // Overtime date selector state (default to current IST month YYYY-MM)
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const options = { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' } as const;
+    const formatter = new Intl.DateTimeFormat('en-CA', options);
+    return formatter.format(new Date()); // YYYY-MM in IST
+  });
+  const [monthlyAttendance, setMonthlyAttendance] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    getAttendanceByMonth(selectedMonth).then(data => {
+      if (active) {
+        setMonthlyAttendance(data);
+      }
+    }).catch(err => {
+      console.error(err);
+    });
+    return () => {
+      active = false;
+    };
+  }, [selectedMonth, getAttendanceByMonth]);
+
+  // Convert "YYYY-MM" to "Month YYYY" for storage/UI compatibility (e.g. "2026-08" to "August 2026")
+  const formatMonthName = (monthStr: string) => {
+    const [year, monthNum] = monthStr.split('-');
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    return `${monthNames[parseInt(monthNum, 10) - 1]} ${year}`;
+  };
+  const currentMonthName = useMemo(() => formatMonthName(selectedMonth), [selectedMonth]);
+
+  // Helper to generate current month's draft OT record from daily attendance logs
   const getEmployeeCurrentOTRecord = (emp: Employee): OTRecord => {
-    const existing = otHistory.find(r => r.month === CURRENT_MONTH && r.employeeId === emp.id);
+    const existing = otHistory.find(r => r.month === currentMonthName && r.employeeId === emp.id);
     if (existing) return existing;
 
-    const calculated = Math.round(emp.otHours * DEFAULT_OT_RATE);
+    // Authoritative calculation: Sum otHours from all daily records in the selected month
+    const empRecords = monthlyAttendance.filter(r => r.employeeId === emp.id);
+    const calculatedOTHours = empRecords.reduce((sum, r) => sum + (r.otHours || 0), 0);
+    const calculated = Math.round(calculatedOTHours * DEFAULT_OT_RATE);
     
-    // Check if there was an old flat manual override stored in employee state
     let finalAmount = calculated;
     let bonus = 0;
     if (emp.otAmountManual !== null) {
@@ -47,14 +78,14 @@ export default function OTManagement() {
     }
 
     return {
-      id: `${CURRENT_MONTH}_${emp.id}`,
+      id: `${currentMonthName}_${emp.id}`,
       employeeId: emp.id,
       employeeName: emp.name,
       department: emp.department,
       role: emp.role,
       avatarColor: emp.avatarColor,
-      month: CURRENT_MONTH,
-      otHours: emp.otHours,
+      month: currentMonthName,
+      otHours: calculatedOTHours,
       otHourlyRate: DEFAULT_OT_RATE,
       calculatedAmount: calculated,
       bonusAmount: bonus,
@@ -71,8 +102,7 @@ export default function OTManagement() {
         record.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         record.employeeId.toLowerCase().includes(searchQuery.toLowerCase())
       );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employees, otHistory, searchQuery]);
+  }, [employees, otHistory, searchQuery, monthlyAttendance, currentMonthName]);
 
   const historyRecords = useMemo(() => {
     return otHistory.filter(record => {
@@ -144,7 +174,6 @@ export default function OTManagement() {
         approvedBy: 'Operations Manager',
         approvalTime: new Date().toISOString()
       });
-      addToast('OT Approved Successfully', 'success');
       setApprovalRecord(null);
     }
   };
@@ -155,7 +184,6 @@ export default function OTManagement() {
         ...paymentRecord,
         status: 'Paid',
       });
-      addToast('OT Marked as Paid', 'success');
       setPaymentRecord(null);
     }
   };
@@ -271,7 +299,23 @@ export default function OTManagement() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-              <span className="pay-period">Active Period: {CURRENT_MONTH}</span>
+              <div className="flex items-center gap-2">
+                <span className="pay-period" style={{ marginRight: '0.25rem' }}>Pay Period:</span>
+                <input 
+                  type="month" 
+                  value={selectedMonth} 
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="filter-select"
+                  style={{ 
+                    padding: '0.25rem 0.5rem', 
+                    borderRadius: 'var(--radius-sm)', 
+                    border: '1px solid var(--border)', 
+                    background: 'transparent', 
+                    color: 'inherit',
+                    cursor: 'pointer'
+                  }}
+                />
+              </div>
             </div>
 
             <div className="table-responsive">
@@ -290,6 +334,10 @@ export default function OTManagement() {
                 <tbody>
                   {currentRecords.map((record) => {
                     const isOverridden = record.bonusAmount > 0 || record.deductionAmount > 0 || record.otHourlyRate !== DEFAULT_OT_RATE;
+                    const payrollRecord = payrollHistory.find(
+                      p => p.employeeId === record.employeeId && p.month === currentMonthName
+                    );
+                    const isPayrollLocked = payrollRecord && (payrollRecord.status === 'Approved' || payrollRecord.status === 'Paid');
 
                     return (
                       <tr key={record.id}>
@@ -330,7 +378,16 @@ export default function OTManagement() {
                         </td>
                         <td>
                           <div className="action-buttons-group">
-                            {record.status === 'Draft' ? (
+                            {isPayrollLocked ? (
+                              <button 
+                                className="btn-icon-action" 
+                                title="Locked by closed monthly payroll" 
+                                disabled 
+                                style={{ opacity: 0.6, cursor: 'not-allowed', color: 'var(--text-muted)' }}
+                              >
+                                <Lock size={16} />
+                              </button>
+                            ) : record.status === 'Draft' ? (
                               <>
                                 <button 
                                   className="btn-icon-action btn-approve" 

@@ -1,13 +1,38 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Search, Calendar, UserCheck, UserX, Clock, Percent } from 'lucide-react';
 import attendanceBg from '../assets/dashboard-backgrounds/attendance-bg.webp';
 import './Attendance.css';
 
 export default function Attendance() {
-  const { employees } = useApp();
+  const { employees, getAttendanceByDate } = useApp();
   const [activeTab, setActiveTab] = useState<'daily' | 'monthly'>('monthly');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Date state for Daily Check-ins (IST Asia/Kolkata timezone default)
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const options = { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
+    const formatter = new Intl.DateTimeFormat('en-CA', options);
+    return formatter.format(new Date());
+  });
+  const [dailyRecords, setDailyRecords] = useState<any[]>([]);
+  const [loadingRecords, setLoadingRecords] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'daily') {
+      let active = true;
+      setLoadingRecords(true);
+      getAttendanceByDate(selectedDate).then((data) => {
+        if (active) {
+          setDailyRecords(data);
+          setLoadingRecords(false);
+        }
+      });
+      return () => {
+        active = false;
+      };
+    }
+  }, [selectedDate, activeTab, getAttendanceByDate]);
 
   const totalStaff = employees.length;
   const presentToday = employees.filter(e => e.status === 'Present' || e.status === 'Half Day').length;
@@ -99,10 +124,31 @@ export default function Attendance() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="date-badge">
-            <Calendar size={16} />
-            <span>May 2026</span>
-          </div>
+          {activeTab === 'daily' ? (
+            <div className="date-badge">
+              <Calendar size={16} />
+              <input 
+                type="date" 
+                value={selectedDate} 
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="date-picker-input"
+                style={{ 
+                  border: 'none', 
+                  background: 'transparent', 
+                  color: 'inherit', 
+                  font: 'inherit', 
+                  outline: 'none', 
+                  cursor: 'pointer',
+                  marginLeft: '0.5rem'
+                }}
+              />
+            </div>
+          ) : (
+            <div className="date-badge">
+              <Calendar size={16} />
+              <span>May 2026</span>
+            </div>
+          )}
         </div>
 
         {activeTab === 'monthly' ? (
@@ -187,50 +233,66 @@ export default function Attendance() {
                 </tr>
               </thead>
               <tbody>
-                {filteredEmployees.map((emp) => (
-                  <tr key={emp.id}>
-                    <td>
-                      <div className="employee-cell">
-                        <div 
-                          className="employee-avatar" 
-                          style={{ backgroundColor: emp.avatarColor || 'var(--primary-light)' }}
-                        >
-                          {emp.name.charAt(0)}
-                        </div>
-                        <div className="employee-details">
-                          <span className="employee-name">{emp.name}</span>
-                          <span className="employee-role">{emp.role}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td><span className="text-muted font-medium">{emp.id}</span></td>
-                    <td>{emp.department}</td>
-                    <td>
-                      <span className={`check-time check-in-time ${emp.status !== 'Absent' ? 'text-success' : 'text-muted'}`}>
-                        {emp.checkIn}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="check-time check-out-time text-muted">
-                        {emp.checkOut}
-                      </span>
-                    </td>
-                    <td>
-                      {emp.verified ? (
-                        <span className="badge badge-success">Face Verified</span>
-                      ) : emp.status !== 'Absent' ? (
-                        <span className="badge badge-warning">Manual Override</span>
-                      ) : (
-                        <span className="badge text-muted">--</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`status-pill ${emp.status.toLowerCase().replace(' ', '-')}`}>
-                        {emp.status}
-                      </span>
+                {loadingRecords ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '3rem' }}>
+                      <span className="text-muted">Loading daily attendance records...</span>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredEmployees.map((emp) => {
+                    const record = dailyRecords.find((r) => r.employeeId === emp.id);
+                    const status = record ? record.status : (emp.status === 'On Leave' ? 'On Leave' : 'Absent');
+                    const checkIn = record ? record.checkIn : '--';
+                    const checkOut = record ? (record.checkOut || '--') : '--';
+                    const verified = record ? record.verified : false;
+
+                    return (
+                      <tr key={emp.id}>
+                        <td>
+                          <div className="employee-cell">
+                            <div 
+                              className="employee-avatar" 
+                              style={{ backgroundColor: emp.avatarColor || 'var(--primary-light)' }}
+                            >
+                              {emp.name.charAt(0)}
+                            </div>
+                            <div className="employee-details">
+                              <span className="employee-name">{emp.name}</span>
+                              <span className="employee-role">{emp.role}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td><span className="text-muted font-medium">{emp.id}</span></td>
+                        <td>{emp.department}</td>
+                        <td>
+                          <span className={`check-time check-in-time ${status !== 'Absent' && status !== 'On Leave' ? 'text-success' : 'text-muted'}`}>
+                            {checkIn}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="check-time check-out-time text-muted">
+                            {checkOut}
+                          </span>
+                        </td>
+                        <td>
+                          {verified ? (
+                            <span className="badge badge-success">Face Verified</span>
+                          ) : status !== 'Absent' && status !== 'On Leave' ? (
+                            <span className="badge badge-warning">Manual Override</span>
+                          ) : (
+                            <span className="badge text-muted">--</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`status-pill ${status.toLowerCase().replace(' ', '-')}`}>
+                            {status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

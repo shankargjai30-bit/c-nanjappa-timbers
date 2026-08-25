@@ -4,13 +4,13 @@ import { getAuth } from "firebase/auth";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyAJ-tzX4jxRIYG_jJpURN43riIfvLWgTvA",
-  authDomain: "c-nanjappa-timber-traders.firebaseapp.com",
-  projectId: "c-nanjappa-timber-traders",
-  storageBucket: "c-nanjappa-timber-traders.firebasestorage.app",
-  messagingSenderId: "986583354147",
-  appId: "1:986583354147:web:2f3cd3b6736d80cf641a96",
-  measurementId: "G-4VYRKFD1GG"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase safely (Singleton)
