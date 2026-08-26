@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as faceapi from 'face-api.js';
+import { Capacitor } from '@capacitor/core';
 import { Camera, CheckCircle, ScanFace, XCircle, LogIn, LogOut } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import biometricsBg from '../assets/dashboard-backgrounds/biometrics-bg.webp';
@@ -110,7 +111,7 @@ export default function FaceBiometrics() {
 
   useEffect(() => {
     const loadModelsAndData = async () => {
-      const MODEL_URL = '/models'; // Local weights assets path
+      const MODEL_URL = Capacitor.isNativePlatform() ? '/models' : '/models'; // Local weights assets path
       try {
         if (!isModelLoaded) {
           await Promise.all([
@@ -191,12 +192,21 @@ export default function FaceBiometrics() {
         setIsModelLoaded(true);
       } catch (err: any) {
         console.error("Error loading face-api models", err);
-        addToast('Failed to load local face models. Models directory mismatch.', 'error');
+        console.error("Model URL:", '/models');
+
+        addToast(
+          `Failed to load face models: ${err?.message || String(err)}`,
+          'error'
+        );
+
         employees.forEach(emp => {
           if (emp.photo) {
             setDiagnosticData(prev => ({ 
               ...prev, 
-              [emp.id]: { status: 'Error', details: `Model load error: ${err?.message || 'Check local server hosting.'}` } 
+              [emp.id]: { 
+                status: 'Error', 
+                details: `Model load error: ${err?.message || 'Unknown model loading error.'}` 
+              } 
             }));
           }
         });
