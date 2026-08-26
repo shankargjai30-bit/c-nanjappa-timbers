@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp, fetchWithAuth, getApiBaseUrl } from '../context/AppContext';
 import { Sun, LogOut, Sliders, HardDrive, Globe, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { saveAndExportFile } from '../utils/fileExport';
 import './Settings.css';
 
 export default function Settings() {
@@ -56,7 +57,7 @@ export default function Settings() {
     addToast('Reset backend URL to default', 'info');
   };
 
-  const handleBackupExport = () => {
+  const handleBackupExport = async () => {
     try {
       if (!employees || employees.length === 0) {
         throw new Error("No data to export");
@@ -80,23 +81,23 @@ export default function Settings() {
 
       const jsonStr = JSON.stringify(backupData, null, 2);
       const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-
       const dateStr = new Date().toISOString().split('T')[0];
-      link.download = `timberpro-backup-${dateStr}.json`;
+      const filename = `timberpro-backup-${dateStr}.json`;
 
-      document.body.appendChild(link);
-      link.click();
+      const result = await saveAndExportFile({
+        filename,
+        blob,
+        mimeType: 'application/json',
+        openWithShare: true,
+        shareTitle: `TimberPro Backup - ${dateStr}`
+      });
 
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      addToast('Backup exported successfully', 'success');
+      if (result.verified) {
+        addToast(result.native ? `Backup saved to ${result.location}` : 'Backup exported successfully', 'success');
+      }
     } catch (error: any) {
       console.error("Backup failed", error);
-      addToast(error?.message === "No data to export" ? "No employee data to export" : "Backup export failed. Please try again.", 'error');
+      addToast(error?.message === "No data to export" ? "No employee data to export" : `Backup export failed: ${error?.message || 'Please try again.'}`, 'error');
     }
   };
 

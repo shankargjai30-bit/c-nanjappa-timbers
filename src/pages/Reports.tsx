@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Search, FileDown, Download, Award, ShieldAlert, BarChart3, Filter, IndianRupee } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import autoTable from 'jspdf-autotable';
+import { saveAndExportFile } from '../utils/fileExport';
 import reportsBg from '../assets/dashboard-backgrounds/reports-bg.webp';
 import './Reports.css';
 
@@ -106,108 +107,115 @@ export default function Reports() {
     ? Math.round(reportData.filter(e => e.daysWorked > 0).reduce((sum, e) => sum + (e.daysWorked / daysInMonth) * 100, 0) / activeStaff)
     : 0;
 
-  // Handle mock export mechanisms that give active visual feedback
-  const triggerExport = (format: 'pdf' | 'excel') => {
+  // Handle real export mechanisms across Web and Native Android
+  const triggerExport = async (format: 'pdf' | 'excel') => {
     setExporting(format);
-    setTimeout(() => {
-      setExporting(null);
+    try {
       if (format === 'pdf') {
-        try {
-          const doc = new jsPDF();
-          
-          doc.setFontSize(18);
-          doc.setFont("helvetica", "bold");
-          doc.text("C NANJAPPA TIMBER TRADERS", 14, 22);
-          
-          doc.setFontSize(11);
-          doc.setFont("helvetica", "normal");
-          doc.text(`Monthly Payroll Report: ${selectedMonth}`, 14, 30);
-          
-          doc.setFontSize(9);
-          doc.setTextColor(100);
-          doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 36);
-          doc.text(`Active Employees in period: ${activeStaff}`, 14, 41);
+        const doc = new jsPDF();
+        
+        doc.setFontSize(18);
+        doc.setFont("helvetica", "bold");
+        doc.text("C NANJAPPA TIMBER TRADERS", 14, 22);
+        
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Monthly Payroll Report: ${selectedMonth}`, 14, 30);
+        
+        doc.setFontSize(9);
+        doc.setTextColor(100);
+        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 36);
+        doc.text(`Active Employees in period: ${activeStaff}`, 14, 41);
 
-          const tableData = reportData.filter(e => e.daysWorked > 0 || e.totalOT > 0).map(emp => {
-            return [
-              emp.name,
-              emp.id,
-              emp.department,
-              emp.daysWorked.toString(),
-              `Rs. ${emp.totalDailyWage.toLocaleString('en-IN')}`,
-              `Rs. ${emp.totalBonus.toLocaleString('en-IN')}`,
-              `Rs. ${emp.totalOT.toLocaleString('en-IN')}`,
-              `Rs. ${emp.totalDeduction.toLocaleString('en-IN')}`,
-              `Rs. ${emp.netPay.toLocaleString('en-IN')}`
-            ];
-          });
+        const tableData = reportData.filter(e => e.daysWorked > 0 || e.totalOT > 0).map(emp => {
+          return [
+            emp.name,
+            emp.id,
+            emp.department,
+            emp.daysWorked.toString(),
+            `Rs. ${emp.totalDailyWage.toLocaleString('en-IN')}`,
+            `Rs. ${emp.totalBonus.toLocaleString('en-IN')}`,
+            `Rs. ${emp.totalOT.toLocaleString('en-IN')}`,
+            `Rs. ${emp.totalDeduction.toLocaleString('en-IN')}`,
+            `Rs. ${emp.netPay.toLocaleString('en-IN')}`
+          ];
+        });
 
-          autoTable(doc, {
-            startY: 48,
-            head: [['Employee Name', 'ID', 'Department', 'Days Worked', 'Total Wages', 'Bonus', 'OT Amount', 'Deductions', 'Net Payout']],
-            body: tableData,
-            theme: 'grid',
-            headStyles: { fillColor: [41, 128, 185], textColor: 255 },
-            styles: { fontSize: 8, cellPadding: 3 },
-          });
+        autoTable(doc, {
+          startY: 48,
+          head: [['Employee Name', 'ID', 'Department', 'Days Worked', 'Total Wages', 'Bonus', 'OT Amount', 'Deductions', 'Net Payout']],
+          body: tableData,
+          theme: 'grid',
+          headStyles: { fillColor: [41, 128, 185], textColor: 255 },
+          styles: { fontSize: 8, cellPadding: 3 },
+        });
 
-          doc.save(`payroll-report-${selectedMonth}.pdf`);
-          if (addToast) addToast('Payroll Report PDF Downloaded Successfully', 'success');
-        } catch (error) {
-          if (addToast) addToast('Failed to generate PDF', 'error');
-          console.error("PDF Export error:", error);
+        const pdfBlob = doc.output('blob');
+        const filename = `payroll-report-${selectedMonth}.pdf`;
+        const result = await saveAndExportFile({
+          filename,
+          blob: pdfBlob,
+          mimeType: 'application/pdf',
+          openWithShare: true,
+          shareTitle: `Monthly Payroll Report - ${selectedMonth}`
+        });
+
+        if (result.verified && addToast) {
+          addToast(result.native ? `PDF saved to ${result.location}` : 'PDF report saved successfully', 'success');
         }
       } else {
-        try {
-          const headers = [
-            'Employee ID',
-            'Employee Name',
-            'Department',
-            'Role',
-            'Payment Type',
-            'Days Worked',
-            'Total Wages (INR)',
-            'Total Bonus (INR)',
-            'OT Amount (INR)',
-            'Total Deductions (INR)',
-            'Net Payout (INR)'
-          ];
+        const headers = [
+          'Employee ID',
+          'Employee Name',
+          'Department',
+          'Role',
+          'Payment Type',
+          'Days Worked',
+          'Total Wages (INR)',
+          'Total Bonus (INR)',
+          'OT Amount (INR)',
+          'Total Deductions (INR)',
+          'Net Payout (INR)'
+        ];
 
-          const rows = reportData.map(emp => {
-            return [
-              `"${emp.id}"`,
-              `"${emp.name}"`,
-              `"${emp.department}"`,
-              `"${emp.role}"`,
-              `"${emp.paymentType || 'Daily Wage'}"`,
-              emp.daysWorked,
-              emp.totalDailyWage,
-              emp.totalBonus,
-              emp.totalOT,
-              emp.totalDeduction,
-              emp.netPay
-            ].join(',');
-          });
+        const rows = reportData.map(emp => {
+          return [
+            `"${emp.id}"`,
+            `"${emp.name}"`,
+            `"${emp.department}"`,
+            `"${emp.role}"`,
+            `"${emp.paymentType || 'Daily Wage'}"`,
+            emp.daysWorked,
+            emp.totalDailyWage,
+            emp.totalBonus,
+            emp.totalOT,
+            emp.totalDeduction,
+            emp.netPay
+          ].join(',');
+        });
 
-          const csvContent = [headers.join(','), ...rows].join('\n');
-          const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-          const url = URL.createObjectURL(blob);
-          const downloadAnchor = document.createElement('a');
-          
-          downloadAnchor.setAttribute('href', url);
-          downloadAnchor.setAttribute('download', `payroll-report-${selectedMonth}.csv`);
-          document.body.appendChild(downloadAnchor);
-          downloadAnchor.click();
-          document.body.removeChild(downloadAnchor);
-          URL.revokeObjectURL(url);
-          
-          if (addToast) addToast('CSV Export Downloaded Successfully', 'success');
-        } catch (error) {
-          if (addToast) addToast('Failed to generate CSV export', 'error');
-          console.error("Export error:", error);
+        const csvContent = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const filename = `payroll-report-${selectedMonth}.csv`;
+
+        const result = await saveAndExportFile({
+          filename,
+          blob,
+          mimeType: 'text/csv',
+          openWithShare: false,
+          shareTitle: `Payroll CSV Export - ${selectedMonth}`
+        });
+
+        if (result.verified && addToast) {
+          addToast(result.native ? `Payroll CSV saved to ${result.location}` : 'Payroll CSV downloaded successfully', 'success');
         }
       }
-    }, 1500);
+    } catch (error: any) {
+      console.error("Export error:", error);
+      if (addToast) addToast(`Failed to save report: ${error?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setExporting(null);
+    }
   };
 
   return (
