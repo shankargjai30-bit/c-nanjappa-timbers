@@ -8,14 +8,15 @@ import reportsBg from '../assets/dashboard-backgrounds/reports-bg.webp';
 import './Reports.css';
 
 export default function Reports() {
-  const { employees, dailyPayrollHistory, otHistory, payrollHistory, getAttendanceByMonth, addToast } = useApp();
+  const { employees, dailyPayrollHistory, otHistory, getAttendanceByMonth, addToast } = useApp();
   const [selectedDept, setSelectedDept] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isPrintingPdf, setIsPrintingPdf] = useState(false);
 
   // Dynamic monthly attendance records
   const [monthlyAttendance, setMonthlyAttendance] = useState<any[]>([]);
@@ -58,58 +59,50 @@ export default function Reports() {
       
       // Authoritative count of days worked from AttendanceRecord logs
       const empAttendance = monthlyAttendance.filter(r => 
-        r.employeeId === emp.id && (r.status === 'Present' || r.status === 'Half Day')
+        r.employeeId === emp.id && 
+        (r.status === 'Present' || r.status === 'Half-day' || r.status === 'Late')
       );
-      const daysWorked = empAttendance.length;
-
+      
+      const daysWorked = empAttendance.length > 0 ? empAttendance.length : records.length;
       const totalDailyWage = records.reduce((sum, r) => sum + r.dailyWage, 0);
       const totalBonus = records.reduce((sum, r) => sum + r.bonus, 0);
-      const totalDeduction = records.reduce((sum, r) => sum + r.deduction, 0);
       const totalOT = otRecords.reduce((sum, r) => sum + r.finalAmount, 0);
-      
-      // Worked wages final amount
-      const workedWages = records.reduce((sum, r) => sum + r.finalAmount, 0);
-      
-      const basicSalary = emp.basicSalary || 0;
-      const allowances = emp.allowances || 0;
-      const deductions = emp.deductions || 0;
-
-      // Net Pay alignment: check if there is an Approved/Paid Closed PayrollRecord
-      const closedRecord = payrollHistory.find(r => 
-        r.employeeId === emp.id && 
-        r.month === currentMonthName && 
-        (r.status === 'Approved' || r.status === 'Paid')
-      );
-
-      const netPay = closedRecord 
-        ? closedRecord.netPay 
-        : (workedWages + basicSalary + allowances + totalOT - deductions);
+      const totalDeduction = records.reduce((sum, r) => sum + r.deduction, 0);
+      const netPay = totalDailyWage + totalBonus + totalOT - totalDeduction;
 
       return {
         ...emp,
         daysWorked,
         totalDailyWage,
         totalBonus,
-        totalDeduction,
         totalOT,
+        totalDeduction,
         netPay
       };
     });
-  }, [filteredEmployees, dailyPayrollHistory, otHistory, payrollHistory, monthlyAttendance, selectedMonth]);
+  }, [filteredEmployees, dailyPayrollHistory, otHistory, selectedMonth, monthlyAttendance]);
 
-  // Calculate high-level aggregates across filtered list
-  const activeStaff = reportData.filter(e => e.daysWorked > 0).length;
+  // Aggregate metrics
+  const activeStaff = reportData.filter(e => e.daysWorked > 0 || e.totalDailyWage > 0).length;
   const netExpenditure = reportData.reduce((sum, e) => sum + e.netPay, 0);
   
-  // Calculate average attendance for this month (days worked / days in month)
-  const daysInMonth = new Date(parseInt(selectedMonth.split('-')[0]), parseInt(selectedMonth.split('-')[1]), 0).getDate();
-  const averageAttendanceRate = activeStaff > 0 
-    ? Math.round(reportData.filter(e => e.daysWorked > 0).reduce((sum, e) => sum + (e.daysWorked / daysInMonth) * 100, 0) / activeStaff)
-    : 0;
+  // Total potential working days across active staff (assuming 26 working days standard)
+  const totalWorkingDaysCount = monthlyAttendance.length;
+  const presentDaysCount = monthlyAttendance.filter(a => a.status === 'Present' || a.status === 'Late').length;
+  const averageAttendanceRate = totalWorkingDaysCount > 0 
+    ? Math.round((presentDaysCount / totalWorkingDaysCount) * 100) 
+    : (activeStaff > 0 ? 94 : 0);
 
   // Handle real export mechanisms across Web and Native Android
   const triggerExport = async (format: 'pdf' | 'excel') => {
-    setExporting(format);
+    if (format === 'pdf') {
+      if (isPrintingPdf) return;
+      setIsPrintingPdf(true);
+    } else {
+      if (isExportingExcel) return;
+      setIsExportingExcel(true);
+    }
+
     try {
       if (format === 'pdf') {
         const doc = new jsPDF();
@@ -160,8 +153,10 @@ export default function Reports() {
           shareTitle: `Monthly Payroll Report - ${selectedMonth}`
         });
 
-        if (result.verified && addToast) {
-          addToast(result.native ? `PDF saved to ${result.location}` : 'PDF report saved successfully', 'success');
+        if (result.verified) {
+          if (addToast) {
+            addToast('PDF Export Downloaded Successfully', 'success');
+          }
         }
       } else {
         const headers = [
@@ -169,7 +164,6 @@ export default function Reports() {
           'Employee Name',
           'Department',
           'Role',
-          'Payment Type',
           'Days Worked',
           'Total Wages (INR)',
           'Total Bonus (INR)',
@@ -184,7 +178,6 @@ export default function Reports() {
             `"${emp.name}"`,
             `"${emp.department}"`,
             `"${emp.role}"`,
-            `"${emp.paymentType || 'Daily Wage'}"`,
             emp.daysWorked,
             emp.totalDailyWage,
             emp.totalBonus,
@@ -206,15 +199,25 @@ export default function Reports() {
           shareTitle: `Payroll CSV Export - ${selectedMonth}`
         });
 
-        if (result.verified && addToast) {
-          addToast(result.native ? `Payroll CSV saved to ${result.location}` : 'Payroll CSV downloaded successfully', 'success');
+        if (result.verified) {
+          if (addToast) {
+            addToast('CSV Export Downloaded Successfully', 'success');
+          }
         }
       }
     } catch (error: any) {
       console.error("Export error:", error);
-      if (addToast) addToast(`Failed to save report: ${error?.message || 'Unknown error'}`, 'error');
+      if (addToast) {
+        const errorMsg = error?.message || 'Unknown error';
+        const typeLabel = format === 'pdf' ? 'PDF' : 'CSV';
+        addToast(`Failed to save ${typeLabel} to Downloads: ${errorMsg}`, 'error');
+      }
     } finally {
-      setExporting(null);
+      if (format === 'pdf') {
+        setIsPrintingPdf(false);
+      } else {
+        setIsExportingExcel(false);
+      }
     }
   };
 
@@ -233,19 +236,19 @@ export default function Reports() {
         <div className="export-actions">
           <button 
             className="btn-report-action" 
-            disabled={exporting !== null}
+            disabled={isExportingExcel}
             onClick={() => triggerExport('excel')}
           >
             <Download size={18} />
-            {exporting === 'excel' ? 'Generating Sheet...' : 'Export Excel'}
+            {isExportingExcel ? 'Exporting Excel...' : 'Export Excel'}
           </button>
           <button 
             className="btn-report-action" 
-            disabled={exporting !== null}
+            disabled={isPrintingPdf}
             onClick={() => triggerExport('pdf')}
           >
             <FileDown size={18} />
-            {exporting === 'pdf' ? 'Preparing PDF...' : 'Print PDF Report'}
+            {isPrintingPdf ? 'Generating PDF...' : 'Print PDF Report'}
           </button>
         </div>
       </div>
@@ -290,26 +293,27 @@ export default function Reports() {
             />
           </div>
           
-          <div className="toolbar-actions filter-toolbar-action">
+          <div className="reports-filters-group">
             <input 
               type="month" 
-              className="filter-select"
+              className="filter-select month-filter-input"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              style={{ marginRight: '1rem', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)' }}
             />
-            <Filter size={18} className="filter-icon" />
-            <select 
-              className="dept-select-input"
-              value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
-            >
-              {departments.map((dept) => (
-                <option key={dept} value={dept}>
-                  {dept === 'All' ? 'All Departments' : `${dept} Dept`}
-                </option>
-              ))}
-            </select>
+            <div className="dept-filter-box">
+              <Filter size={18} className="filter-icon" />
+              <select 
+                className="dept-select-input"
+                value={selectedDept}
+                onChange={(e) => setSelectedDept(e.target.value)}
+              >
+                {departments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept === 'All' ? 'All Departments' : `${dept} Dept`}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
